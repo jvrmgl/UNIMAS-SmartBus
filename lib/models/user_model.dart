@@ -76,22 +76,17 @@ class DriverProfile extends User {
   final int totalTrips;
 
   DriverProfile({
-    required String uid,
-    required String email,
-    required String fullName,
-    required String phoneNumber,
-    required DateTime createdAt,
+    required super.uid,
+    required super.email,
+    required super.fullName,
+    required super.phoneNumber,
+    required super.createdAt,
     required this.licenseNumber,
     required this.licenseExpiryDate,
     this.rating = 0.0,
     this.totalTrips = 0,
   }) : super(
-    uid: uid,
-    email: email,
-    fullName: fullName,
-    phoneNumber: phoneNumber,
     role: UserRole.driver,
-    createdAt: createdAt,
   );
 
   @override
