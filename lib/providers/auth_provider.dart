@@ -93,6 +93,64 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> ensureUserProfile({
+    required UserRole role,
+    String? fullName,
+    String? phoneNumber,
+  }) async {
+    if (_firebaseUser == null) return false;
+
+    final uid = _firebaseUser!.uid;
+    final email = _firebaseUser!.email ?? '';
+
+    final existing = await _firestoreService.getUserData(uid);
+    if (existing != null) {
+      _currentUser = existing;
+      notifyListeners();
+      return true;
+    }
+
+    final fallbackName = fullName ?? email.split('@').first;
+    final user = User(
+      uid: uid,
+      email: email,
+      fullName: fallbackName.isEmpty ? 'User' : fallbackName,
+      phoneNumber: phoneNumber ?? '',
+      role: role,
+      createdAt: DateTime.now(),
+    );
+
+    final result = await _firestoreService.createUserProfile(user);
+    if (result != null) {
+      _error = result;
+      notifyListeners();
+      return false;
+    }
+
+    _currentUser = user;
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> updateUserRole(UserRole role) async {
+    if (_firebaseUser == null || _currentUser == null) return false;
+
+    final result = await _firestoreService.updateUserRole(
+      uid: _firebaseUser!.uid,
+      role: role,
+    );
+
+    if (result != null) {
+      _error = result;
+      notifyListeners();
+      return false;
+    }
+
+    _currentUser = _currentUser!.copyWith(role: role);
+    notifyListeners();
+    return true;
+  }
+
   Future<bool> updateProfile({
     String? fullName,
     String? phoneNumber,

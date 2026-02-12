@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
+import '../../providers/theme_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,6 +16,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _passwordController;
   bool _obscurePassword = true;
   bool _isLoading = false;
+  UserRole _selectedRole = UserRole.driver;
+  bool _serviceAlerts = true;
+  bool _busUpdates = true;
 
   @override
   void initState() {
@@ -56,7 +60,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
 
         if (mounted && authProvider.currentUser != null) {
-          final userRole = authProvider.currentUser?.role;
+          var userRole = authProvider.currentUser?.role;
+          if (userRole != null && userRole != _selectedRole) {
+            final updated = await authProvider.updateUserRole(_selectedRole);
+            if (updated) {
+              userRole = authProvider.currentUser?.role ?? _selectedRole;
+            }
+          }
           if (userRole == UserRole.driver) {
             Navigator.of(context).pushReplacementNamed('/driver');
           } else if (userRole == UserRole.admin) {
@@ -66,7 +76,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             await authProvider.signOut();
           }
         } else {
-          _showMessage('Failed to load user data');
+          final created = await authProvider.ensureUserProfile(
+            role: _selectedRole,
+          );
+          if (created && authProvider.currentUser != null) {
+            final role = authProvider.currentUser!.role;
+            if (role == UserRole.driver) {
+              Navigator.of(context).pushReplacementNamed('/driver');
+            } else if (role == UserRole.admin) {
+              Navigator.of(context).pushReplacementNamed('/admin');
+            }
+          } else {
+            _showMessage('Failed to load user data');
+          }
         }
       }
     } else {
@@ -81,6 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showMessage('Logged out');
       _emailController.clear();
       _passwordController.clear();
+      Navigator.of(context).pushNamedAndRemoveUntil('/guest', (route) => false);
     }
   }
 
@@ -99,15 +122,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
+          final themeProvider = context.watch<ThemeProvider>();
           if (authProvider.isAuthenticated && authProvider.currentUser != null) {
+            _selectedRole = authProvider.currentUser!.role;
             // User is logged in - show account info
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _buildSectionTitle('Notifications'),
+                Card(
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Service alerts'),
+                        subtitle: const Text('Delays, closures, announcements'),
+                        value: _serviceAlerts,
+                        onChanged: (value) {
+                          setState(() {
+                            _serviceAlerts = value;
+                          });
+                        },
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
+                        title: const Text('Bus updates'),
+                        subtitle: const Text('Nearby buses and stops'),
+                        value: _busUpdates,
+                        onChanged: (value) {
+                          setState(() {
+                            _busUpdates = value;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Appearance'),
+                Card(
+                  child: SwitchListTile(
+                    title: const Text('Dark mode'),
+                    value: themeProvider.isDarkMode,
+                    onChanged: (value) {
+                      themeProvider.setDarkMode(value);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Account'),
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
@@ -156,6 +222,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSectionTitle('Notifications'),
+                  Card(
+                    child: Column(
+                      children: [
+                        SwitchListTile(
+                          title: const Text('Service alerts'),
+                          subtitle: const Text('Delays, closures, announcements'),
+                          value: _serviceAlerts,
+                          onChanged: (value) {
+                            setState(() {
+                              _serviceAlerts = value;
+                            });
+                          },
+                        ),
+                        const Divider(height: 1),
+                        SwitchListTile(
+                          title: const Text('Bus updates'),
+                          subtitle: const Text('Nearby buses and stops'),
+                          value: _busUpdates,
+                          onChanged: (value) {
+                            setState(() {
+                              _busUpdates = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSectionTitle('Appearance'),
+                  Card(
+                    child: SwitchListTile(
+                      title: const Text('Dark mode'),
+                      value: themeProvider.isDarkMode,
+                      onChanged: (value) {
+                        themeProvider.setDarkMode(value);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSectionTitle('Login'),
                   Text(
                     'Driver & Admin Login',
                     style: Theme.of(context).textTheme.titleLarge,
@@ -166,6 +273,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 32),
+                  DropdownButtonFormField<UserRole>(
+                    value: _selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Account Type',
+                      prefixIcon: Icon(Icons.badge),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: UserRole.driver,
+                        child: Text('Driver'),
+                      ),
+                      DropdownMenuItem(
+                        value: UserRole.admin,
+                        child: Text('Admin'),
+                      ),
+                    ],
+                    onChanged: _isLoading
+                        ? null
+                        : (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _selectedRole = value;
+                            });
+                          },
+                  ),
+                  const SizedBox(height: 16),
                   // Email Field
                   TextField(
                     controller: _emailController,
@@ -259,6 +392,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
     );
   }
 }

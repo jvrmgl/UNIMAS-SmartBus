@@ -334,4 +334,29 @@ class FirestoreService {
       return null;
     }
   }
+
+  // Create user profile
+  Future<String?> createUserProfile(User user) async {
+    try {
+      await _firestore.collection('users').doc(user.uid).set(user.toMap());
+      return null;
+    } catch (e) {
+      return 'Error creating user profile: $e';
+    }
+  }
+
+  // Update user role
+  Future<String?> updateUserRole({
+    required String uid,
+    required UserRole role,
+  }) async {
+    try {
+      await _firestore.collection('users').doc(uid).update({
+        'role': role.toString().split('.').last,
+      });
+      return null;
+    } catch (e) {
+      return 'Error updating user role: $e';
+    }
+  }
 }

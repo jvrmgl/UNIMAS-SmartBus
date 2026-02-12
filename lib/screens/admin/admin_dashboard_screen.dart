@@ -17,15 +17,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              context.read<AuthProvider>().signOut();
-              Navigator.of(context).pushReplacementNamed('/login');
-            },
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -89,6 +80,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   subtitle: 'Create announcements',
                 ),
                 _buildAdminCard(
+                  icon: Icons.notifications,
+                  title: 'Notifications',
+                  subtitle: 'Send push alerts',
+                ),
+                _buildAdminCard(
                   icon: Icons.report,
                   title: 'Reports',
                   subtitle: 'View reports',
@@ -97,11 +93,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   icon: Icons.analytics,
                   title: 'Analytics',
                   subtitle: 'View statistics',
-                ),
-                _buildAdminCard(
-                  icon: Icons.settings,
-                  title: 'Settings',
-                  subtitle: 'System settings',
                 ),
               ],
             ),

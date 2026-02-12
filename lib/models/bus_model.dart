@@ -1,3 +1,18 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+DateTime _parseDateTime(dynamic value) {
+  if (value is Timestamp) {
+    return value.toDate();
+  }
+  if (value is DateTime) {
+    return value;
+  }
+  if (value is String) {
+    return DateTime.tryParse(value) ?? DateTime.now();
+  }
+  return DateTime.now();
+}
+
 class Bus {
   final String busId;
   final String busNumber;
@@ -57,7 +72,7 @@ class Bus {
       model: map['model'] as String,
       capacity: map['capacity'] as int,
       currentOccupancy: map['currentOccupancy'] as int? ?? 0,
-      lastUpdated: DateTime.parse(map['lastUpdated'] as String? ?? DateTime.now().toIso8601String()),
+      lastUpdated: _parseDateTime(map['lastUpdated']),
       isActive: map['isActive'] as bool? ?? true,
       latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,

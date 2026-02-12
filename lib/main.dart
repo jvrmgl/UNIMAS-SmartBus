@@ -10,15 +10,16 @@ import 'providers/bus_provider.dart';
 import 'providers/route_provider.dart';
 import 'providers/location_provider.dart';
 import 'providers/announcement_provider.dart';
+import 'providers/theme_provider.dart';
 import 'services/device_service.dart';
 import 'services/local_storage_service.dart';
 import 'screens/auth/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
-import 'screens/guest/guest_map_screen.dart';
+import 'screens/guest/guest_home_screen.dart';
 import 'screens/guest/student_dashboard_screen.dart';
-import 'screens/driver/driver_dashboard_screen.dart';
-import 'screens/admin/admin_dashboard_screen.dart';
+import 'screens/driver/driver_home_screen.dart';
+import 'screens/admin/admin_home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,20 +53,27 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => RouteProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => AnnouncementProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: AppConstants.appName,
-        theme: AppTheme.lightTheme,
-        debugShowCheckedModeBanner: false,
-        home: const SplashScreen(),
-        routes: {
-          '/splash': (context) => const SplashScreen(),
-          '/login': (context) => const LoginScreen(),
-          '/signup': (context) => const SignupScreen(),
-          '/guest': (context) => const GuestMapScreen(),
-          '/student': (context) => const StudentDashboardScreen(),
-          '/driver': (context) => const DriverDashboardScreen(),
-          '/admin': (context) => const AdminDashboardScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            title: AppConstants.appName,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            debugShowCheckedModeBanner: false,
+            home: const SplashScreen(),
+            routes: {
+              '/splash': (context) => const SplashScreen(),
+              '/login': (context) => const LoginScreen(),
+              '/signup': (context) => const SignupScreen(),
+              '/guest': (context) => const GuestHomeScreen(),
+              '/student': (context) => const StudentDashboardScreen(),
+              '/driver': (context) => const DriverHomeScreen(),
+              '/admin': (context) => const AdminHomeScreen(),
+            },
+          );
         },
       ),
     );

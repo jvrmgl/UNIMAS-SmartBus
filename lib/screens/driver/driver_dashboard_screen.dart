@@ -17,15 +17,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       appBar: AppBar(
         title: const Text('Driver Dashboard'),
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              context.read<AuthProvider>().signOut();
-              Navigator.of(context).pushReplacementNamed('/login');
-            },
-          ),
-        ],
       ),
       body: Column(
         children: [

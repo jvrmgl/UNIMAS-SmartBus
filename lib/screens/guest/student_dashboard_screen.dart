@@ -5,7 +5,6 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../constants/app_theme.dart';
-import 'settings_screen.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   const StudentDashboardScreen({super.key});
@@ -21,7 +20,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     
     // Load initial data
     Future.microtask(() {
@@ -44,20 +43,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
       appBar: AppBar(
         title: const Text('UNIMAS SmartBus'),
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              // Navigate to settings
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              _showLogoutDialog();
-            },
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -78,11 +63,29 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      'View real-time bus locations and schedules',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.white70,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'View real-time bus schedules',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.white70,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Report feature coming soon'),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'Report',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -96,11 +99,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
             labelColor: AppTheme.primaryColor,
             unselectedLabelColor: Colors.grey,
             tabs: const [
-              Tab(icon: Icon(Icons.map), text: 'Map'),
+              Tab(icon: Icon(Icons.schedule), text: 'Schedules'),
               Tab(icon: Icon(Icons.directions_bus), text: 'Buses'),
               Tab(icon: Icon(Icons.route), text: 'Routes'),
               Tab(icon: Icon(Icons.notifications), text: 'News'),
-              Tab(icon: Icon(Icons.settings), text: 'Settings'),
             ],
           ),
           // Tab Views
@@ -108,11 +110,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildMapTab(),
+                _buildSchedulesTab(),
                 _buildBusesTab(),
                 _buildRoutesTab(),
                 _buildAnnouncementsTab(),
-                const SettingsScreen(),
               ],
             ),
           ),
@@ -121,28 +122,28 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     );
   }
 
-  Widget _buildMapTab() {
+  Widget _buildSchedulesTab() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.map, size: 64, color: Colors.grey),
+          Icon(Icons.schedule, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
           Text(
-            'Real-Time Bus Map',
+            'Bus Schedules',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
-            'Map view coming soon',
+            'Schedules view coming soon',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () {
-              // Implement map navigation
+              // Implement schedule navigation
             },
-            child: const Text('View Map'),
+            child: const Text('View Schedules'),
           ),
         ],
       ),
@@ -387,29 +388,4 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     );
   }
 
-  void _showLogoutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              context.read<AuthProvider>().signOut();
-              if (mounted) {
-                Navigator.of(context).pushReplacementNamed('/login');
-              }
-            },
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
-    );
-  }
 }

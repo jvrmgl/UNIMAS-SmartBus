@@ -1,3 +1,18 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+DateTime _parseDateTime(dynamic value) {
+  if (value is Timestamp) {
+    return value.toDate();
+  }
+  if (value is DateTime) {
+    return value;
+  }
+  if (value is String) {
+    return DateTime.tryParse(value) ?? DateTime.now();
+  }
+  return DateTime.now();
+}
+
 class BusRoute {
   final String routeId;
   final String routeName;
@@ -38,7 +53,7 @@ class BusRoute {
       routeName: map['routeName'] as String,
       routeCode: map['routeCode'] as String,
       stopIds: List<String>.from(map['stopIds'] as List? ?? []),
-      createdAt: DateTime.parse(map['createdAt'] as String),
+      createdAt: _parseDateTime(map['createdAt']),
       isActive: map['isActive'] as bool? ?? true,
       description: map['description'] as String? ?? '',
       estimatedDuration: map['estimatedDuration'] as int? ?? 0,

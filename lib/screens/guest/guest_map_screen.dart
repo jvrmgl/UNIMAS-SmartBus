@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
+import '../../constants/app_constants.dart';
 import '../../constants/app_theme.dart';
 
 class GuestMapScreen extends StatefulWidget {
@@ -13,13 +18,19 @@ class GuestMapScreen extends StatefulWidget {
 }
 
 class _GuestMapScreenState extends State<GuestMapScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  Set<Marker> _markers = {};
+  final Completer<GoogleMapController> _mapController =
+      Completer<GoogleMapController>();
+  final TextEditingController _originController = TextEditingController();
+  final TextEditingController _destinationController = TextEditingController();
+  Marker? _originMarker;
+  Marker? _destinationMarker;
 
   @override
   void initState() {
     super.initState();
-    _loadBusesAndStops();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadBusesAndStops();
+    });
   }
 
   void _loadBusesAndStops() async {
@@ -30,14 +41,13 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     // Trigger initial data load
     await busProvider.fetchBuses();
     await routeProvider.fetchRoutes();
-
-    _updateMapMarkers();
+    await routeProvider.fetchBusStops();
   }
 
-  void _updateMapMarkers() {
-    final busProvider = context.read<BusProvider>();
-    final routeProvider = context.read<RouteProvider>();
-
+  Set<Marker> _buildMarkers(
+    BusProvider busProvider,
+    RouteProvider routeProvider,
+  ) {
     Set<Marker> markers = {};
 
     // Add bus markers
@@ -74,36 +84,92 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       );
     }
 
-    setState(() {
-      _markers = markers;
-    });
+    if (_originMarker != null) {
+      markers.add(_originMarker!);
+    }
+    if (_destinationMarker != null) {
+      markers.add(_destinationMarker!);
+    }
+
+    return markers;
   }
 
-  void _showLoginPrompt() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Login Available'),
-        content: const Text('Are you a driver or admin? Login to access your dashboard.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _navigateToLogin();
-            },
-            child: const Text('Login'),
-          ),
-        ],
-      ),
+  Future<LatLng?> _geocodeAddress(String address) async {
+    final trimmed = address.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.https(
+      'maps.googleapis.com',
+      '/maps/api/geocode/json',
+      {
+        'address': trimmed,
+        'key': AppConstants.googleMapsApiKey,
+      },
+    );
+
+    final response = await http
+        .get(uri)
+        .timeout(const Duration(seconds: AppConstants.requestTimeoutSeconds));
+
+    if (response.statusCode != 200) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (data['status'] != 'OK') {
+      return null;
+    }
+
+    final result = (data['results'] as List).first as Map<String, dynamic>;
+    final location = result['geometry']['location'] as Map<String, dynamic>;
+    return LatLng(location['lat'] as double, location['lng'] as double);
+  }
+
+  Future<void> _moveCamera(LatLng target) async {
+    if (!_mapController.isCompleted) {
+      return;
+    }
+    final controller = await _mapController.future;
+    await controller.animateCamera(
+      CameraUpdate.newLatLngZoom(target, AppConstants.defaultMapZoom),
     );
   }
 
-  void _navigateToLogin() {
-    Navigator.of(context).pushNamed('/login');
+  Future<void> _handleSearch({required bool isOrigin}) async {
+    final query = isOrigin
+        ? _originController.text
+        : _destinationController.text;
+
+    final location = await _geocodeAddress(query);
+    if (location == null) {
+      return;
+    }
+
+    setState(() {
+      if (isOrigin) {
+        _originMarker = Marker(
+          markerId: const MarkerId('origin_search'),
+          position: location,
+          infoWindow: const InfoWindow(title: 'Current Location'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueAzure,
+          ),
+        );
+      } else {
+        _destinationMarker = Marker(
+          markerId: const MarkerId('destination_search'),
+          position: location,
+          infoWindow: const InfoWindow(title: 'Destination'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueViolet,
+          ),
+        );
+      }
+    });
+
+    await _moveCamera(location);
   }
 
   @override
@@ -113,33 +179,31 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
         title: const Text('UNIMAS SmartBus'),
         centerTitle: true,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.login),
-            onPressed: _showLoginPrompt,
-            tooltip: 'Login as Driver/Admin',
-          ),
-        ],
       ),
       body: Stack(
         children: [
           // Map
           Consumer2<BusProvider, RouteProvider>(
             builder: (context, busProvider, routeProvider, _) {
+              final markers = _buildMarkers(busProvider, routeProvider);
               return GoogleMap(
-
+                onMapCreated: (controller) {
+                  if (!_mapController.isCompleted) {
+                    _mapController.complete(controller);
+                  }
+                },
                 initialCameraPosition: const CameraPosition(
-                  target: LatLng(1.5533, 111.4758), // Kuching, Malaysia
-                  zoom: 14,
+                  target: LatLng(1.4651, 110.4277), // UNIMAS, Kota Samarahan
+                  zoom: AppConstants.defaultMapZoom,
                 ),
-                markers: _markers,
+                markers: markers,
                 myLocationEnabled: true,
                 myLocationButtonEnabled: true,
               );
             },
           ),
 
-          // Search Bar at the top
+          // Search fields at the top
           Positioned(
             top: 16,
             left: 16,
@@ -155,69 +219,30 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                   ),
                 ],
               ),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search bus stops...',
-                  prefixIcon: const Icon(Icons.search),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 16,
-                  ),
-                ),
-                onChanged: (value) {
-                  // TODO: Implement search filtering
-                },
-              ),
-            ),
-          ),
-
-          // Legend at the bottom
-          Positioned(
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                  ),
-                ],
-              ),
               padding: const EdgeInsets.all(12),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.location_on,
-                        color: AppTheme.primaryColor,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Bus', style: TextStyle(fontSize: 12)),
-                    ],
+                  TextField(
+                    controller: _originController,
+                    textInputAction: TextInputAction.search,
+                    decoration: const InputDecoration(
+                      hintText: 'Current location (type to search)',
+                      prefixIcon: Icon(Icons.my_location),
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (_) => _handleSearch(isOrigin: true),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.location_on,
-                        color: Colors.red,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Bus Stop', style: TextStyle(fontSize: 12)),
-                    ],
+                  const Divider(height: 1),
+                  TextField(
+                    controller: _destinationController,
+                    textInputAction: TextInputAction.search,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter destination (e.g. Faculty of Engineering)',
+                      prefixIcon: Icon(Icons.place),
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (_) => _handleSearch(isOrigin: false),
                   ),
                 ],
               ),
@@ -230,7 +255,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _originController.dispose();
+    _destinationController.dispose();
     super.dispose();
   }
 }
