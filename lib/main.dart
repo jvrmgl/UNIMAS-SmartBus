@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
 import 'constants/app_theme.dart';
 import 'constants/app_constants.dart';
@@ -9,19 +10,32 @@ import 'providers/bus_provider.dart';
 import 'providers/route_provider.dart';
 import 'providers/location_provider.dart';
 import 'providers/announcement_provider.dart';
+import 'services/device_service.dart';
+import 'services/local_storage_service.dart';
 import 'screens/auth/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
-import 'screens/student/student_dashboard_screen.dart';
+import 'screens/guest/guest_map_screen.dart';
+import 'screens/guest/student_dashboard_screen.dart';
 import 'screens/driver/driver_dashboard_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Initialize Hive for local storage
+  await Hive.initFlutter();
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize services
+  final deviceService = DeviceService();
+  final localStorageService = LocalStorageService();
+  
+  await deviceService.initialize();
+  await localStorageService.initialize();
   
   runApp(const MyApp());
 }
@@ -48,6 +62,7 @@ class MyApp extends StatelessWidget {
           '/splash': (context) => const SplashScreen(),
           '/login': (context) => const LoginScreen(),
           '/signup': (context) => const SignupScreen(),
+          '/guest': (context) => const GuestMapScreen(),
           '/student': (context) => const StudentDashboardScreen(),
           '/driver': (context) => const DriverDashboardScreen(),
           '/admin': (context) => const AdminDashboardScreen(),

@@ -5,6 +5,7 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../constants/app_theme.dart';
+import 'settings_screen.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   const StudentDashboardScreen({super.key});
@@ -20,7 +21,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     
     // Load initial data
     Future.microtask(() {
@@ -99,6 +100,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
               Tab(icon: Icon(Icons.directions_bus), text: 'Buses'),
               Tab(icon: Icon(Icons.route), text: 'Routes'),
               Tab(icon: Icon(Icons.notifications), text: 'News'),
+              Tab(icon: Icon(Icons.settings), text: 'Settings'),
             ],
           ),
           // Tab Views
@@ -110,6 +112,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                 _buildBusesTab(),
                 _buildRoutesTab(),
                 _buildAnnouncementsTab(),
+                const SettingsScreen(),
               ],
             ),
           ),

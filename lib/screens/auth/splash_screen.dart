@@ -36,11 +36,11 @@ class _SplashScreenState extends State<SplashScreen> {
         } else if (userRole == UserRole.admin) {
           Navigator.of(context).pushReplacementNamed('/admin');
         } else {
-          Navigator.of(context).pushReplacementNamed('/login');
+          Navigator.of(context).pushReplacementNamed('/guest');
         }
       } else {
-        // Navigate to login
-        Navigator.of(context).pushReplacementNamed('/login');
+        // Navigate to guest map (no login required)
+        Navigator.of(context).pushReplacementNamed('/guest');
       }
     }
   }

@@ -15,7 +15,6 @@ class _LoginScreenState extends State<LoginScreen> {
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
   bool _obscurePassword = true;
-  final bool _isLoading = false;
 
   @override
   void initState() {
@@ -44,15 +43,25 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (success) {
-      // Navigate based on user role
+      // Wait for user data to be loaded (max 5 seconds)
       if (mounted) {
-        final userRole = authProvider.currentUser?.role;
-        if (userRole == UserRole.student) {
-          Navigator.of(context).pushReplacementNamed('/student');
-        } else if (userRole == UserRole.driver) {
-          Navigator.of(context).pushReplacementNamed('/driver');
-        } else if (userRole == UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin');
+        int attempts = 0;
+        while (authProvider.currentUser == null && attempts < 50) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          attempts++;
+        }
+
+        if (mounted && authProvider.currentUser != null) {
+          final userRole = authProvider.currentUser?.role;
+          if (userRole == UserRole.student) {
+            Navigator.of(context).pushReplacementNamed('/student');
+          } else if (userRole == UserRole.driver) {
+            Navigator.of(context).pushReplacementNamed('/driver');
+          } else if (userRole == UserRole.admin) {
+            Navigator.of(context).pushReplacementNamed('/admin');
+          }
+        } else {
+          _showErrorDialog('Failed to load user data');
         }
       }
     } else {
