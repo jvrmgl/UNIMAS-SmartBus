@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../constants/app_theme.dart';
+import 'reports_management_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -88,6 +89,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   icon: Icons.report,
                   title: 'Reports',
                   subtitle: 'View reports',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ReportsManagementScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildAdminCard(
                   icon: Icons.analytics,
@@ -106,14 +114,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
     return Card(
       child: InkWell(
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$title feature coming soon')),
-          );
-        },
+        onTap: onTap ??
+            () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$title feature coming soon')),
+              );
+            },
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

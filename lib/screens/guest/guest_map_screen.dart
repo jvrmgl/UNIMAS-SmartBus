@@ -5,8 +5,11 @@ import 'dart:convert';
 
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
+import '../../providers/location_provider.dart';
+import '../../models/bus_stop_model.dart';
 import '../../constants/app_constants.dart';
 import '../../constants/app_theme.dart';
 
@@ -24,6 +27,11 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   final TextEditingController _destinationController = TextEditingController();
   Marker? _originMarker;
   Marker? _destinationMarker;
+  Timer? _originDebounce;
+  Timer? _destinationDebounce;
+  List<String> _originSuggestions = [];
+  List<String> _destinationSuggestions = [];
+  bool _isDetectingLocation = false;
 
   @override
   void initState() {
@@ -127,6 +135,60 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     return LatLng(location['lat'] as double, location['lng'] as double);
   }
 
+  Future<List<String>> _fetchSuggestions(String input) async {
+    final trimmed = input.trim();
+    if (trimmed.length < 3) return [];
+
+    final uri = Uri.https(
+      'maps.googleapis.com',
+      '/maps/api/place/autocomplete/json',
+      {
+        'input': trimmed,
+        'key': AppConstants.googleMapsApiKey,
+        'components': 'country:my',
+        'location': '1.4655,110.3578',
+        'radius': '50000',
+      },
+    );
+
+    final response = await http
+        .get(uri)
+        .timeout(const Duration(seconds: AppConstants.requestTimeoutSeconds));
+
+    if (response.statusCode != 200) return [];
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (data['status'] != 'OK') return [];
+
+    final predictions = (data['predictions'] as List)
+        .map((item) => item['description'] as String)
+        .toList();
+
+    return predictions.take(3).toList();
+  }
+
+  void _onOriginChanged(String value) {
+    _originDebounce?.cancel();
+    _originDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final suggestions = await _fetchSuggestions(value);
+      if (!mounted) return;
+      setState(() {
+        _originSuggestions = suggestions;
+      });
+    });
+  }
+
+  void _onDestinationChanged(String value) {
+    _destinationDebounce?.cancel();
+    _destinationDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final suggestions = await _fetchSuggestions(value);
+      if (!mounted) return;
+      setState(() {
+        _destinationSuggestions = suggestions;
+      });
+    });
+  }
+
   Future<void> _moveCamera(LatLng target) async {
     if (!_mapController.isCompleted) {
       return;
@@ -144,6 +206,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
 
     final location = await _geocodeAddress(query);
     if (location == null) {
+      _showMessage('Location not found. Try a more specific name.');
       return;
     }
 
@@ -170,6 +233,139 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     });
 
     await _moveCamera(location);
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    // Use Geolocator's built-in distance calculation (returns meters)
+    return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / 1000; // Convert to km
+  }
+  
+  List<BusStop> _findNearbyStops(double userLat, double userLon, List<BusStop> allStops) {
+    final stopsWithDistance = allStops.map((stop) {
+      final distance = _calculateDistance(userLat, userLon, stop.latitude, stop.longitude);
+      return {'stop': stop, 'distance': distance};
+    }).toList();
+
+    stopsWithDistance.sort((a, b) => 
+      (a['distance'] as double).compareTo(b['distance'] as double)
+    );
+
+    return stopsWithDistance
+        .take(5)
+        .map((item) => item['stop'] as BusStop)
+        .toList();
+  }
+
+  void _showNearbyStops(double userLat, double userLon, List<BusStop> nearbyStops) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.location_on, color: AppTheme.primaryColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Nearby Bus Stops',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (nearbyStops.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: Text('No bus stops found nearby')),
+                )
+              else
+                ...nearbyStops.map((stop) {
+                  final distance = _calculateDistance(
+                    userLat,
+                    userLon,
+                    stop.latitude,
+                    stop.longitude,
+                  );
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppTheme.primaryColor,
+                      child: const Icon(Icons.bus_alert, color: Colors.white, size: 20),
+                    ),
+                    title: Text(stop.stopName),
+                    subtitle: Text('${stop.stopCode} • ${distance.toStringAsFixed(2)} km away'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _moveCamera(LatLng(stop.latitude, stop.longitude));
+                    },
+                  );
+                }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _detectMyLocation() async {
+    setState(() => _isDetectingLocation = true);
+
+    try {
+      final locationProvider = context.read<LocationProvider>();
+      
+      // Check and request permission if needed
+      final hasPermission = await locationProvider.checkLocationPermission();
+      if (!hasPermission) {
+        final granted = await locationProvider.requestLocationPermission();
+        if (!granted) {
+          _showMessage('Location permission denied');
+          setState(() => _isDetectingLocation = false);
+          return;
+        }
+      }
+
+      // Get current location
+      await locationProvider.getCurrentLocation();
+      final position = locationProvider.currentPosition;
+
+      if (position == null) {
+        _showMessage('Could not get your location');
+        setState(() => _isDetectingLocation = false);
+        return;
+      }
+
+      // Move camera to user location
+      final userLocation = LatLng(position.latitude, position.longitude);
+      await _moveCamera(userLocation);
+
+      // Find nearby bus stops
+      final routeProvider = context.read<RouteProvider>();
+      final nearbyStops = _findNearbyStops(
+        position.latitude,
+        position.longitude,
+        routeProvider.busStops,
+      );
+
+      // Show nearby stops in bottom sheet
+      if (mounted) {
+        _showNearbyStops(position.latitude, position.longitude, nearbyStops);
+      }
+
+      setState(() => _isDetectingLocation = false);
+    } catch (e) {
+      _showMessage('Error: ${e.toString()}');
+      setState(() => _isDetectingLocation = false);
+    }
   }
 
   @override
@@ -226,25 +422,106 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                   TextField(
                     controller: _originController,
                     textInputAction: TextInputAction.search,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Current location (type to search)',
-                      prefixIcon: Icon(Icons.my_location),
+                      prefixIcon: const Icon(Icons.my_location),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: () => _handleSearch(isOrigin: true),
+                      ),
                       border: InputBorder.none,
                     ),
+                    onChanged: _onOriginChanged,
+                    onEditingComplete: () => _handleSearch(isOrigin: true),
                     onSubmitted: (_) => _handleSearch(isOrigin: true),
                   ),
+                  if (_originSuggestions.isNotEmpty)
+                    Column(
+                      children: _originSuggestions
+                          .map(
+                            (suggestion) => ListTile(
+                              dense: true,
+                              title: Text(suggestion),
+                              onTap: () {
+                                _originController.text = suggestion;
+                                setState(() => _originSuggestions = []);
+                                _handleSearch(isOrigin: true);
+                              },
+                            ),
+                          )
+                          .toList(),
+                    ),
                   const Divider(height: 1),
                   TextField(
                     controller: _destinationController,
                     textInputAction: TextInputAction.search,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Enter destination (e.g. Faculty of Engineering)',
-                      prefixIcon: Icon(Icons.place),
+                      prefixIcon: const Icon(Icons.place),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: () => _handleSearch(isOrigin: false),
+                      ),
                       border: InputBorder.none,
                     ),
+                    onChanged: _onDestinationChanged,
+                    onEditingComplete: () => _handleSearch(isOrigin: false),
                     onSubmitted: (_) => _handleSearch(isOrigin: false),
                   ),
+                  if (_destinationSuggestions.isNotEmpty)
+                    Column(
+                      children: _destinationSuggestions
+                          .map(
+                            (suggestion) => ListTile(
+                              dense: true,
+                              title: Text(suggestion),
+                              onTap: () {
+                                _destinationController.text = suggestion;
+                                setState(() => _destinationSuggestions = []);
+                                _handleSearch(isOrigin: false);
+                              },
+                            ),
+                          )
+                          .toList(),
+                    ),
                 ],
+              ),
+            ),
+          ),
+
+          // Location detection button (positioned above zoom controls)
+          Positioned(
+            right: 16,
+            bottom: 180,
+            child: Material(
+              elevation: 4,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: _isDetectingLocation ? null : _detectMyLocation,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _isDetectingLocation 
+                        ? Colors.grey
+                        : AppTheme.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: _isDetectingLocation
+                      ? const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.my_location,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                ),
               ),
             ),
           ),
@@ -257,6 +534,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   void dispose() {
     _originController.dispose();
     _destinationController.dispose();
+    _originDebounce?.cancel();
+    _destinationDebounce?.cancel();
     super.dispose();
   }
 }

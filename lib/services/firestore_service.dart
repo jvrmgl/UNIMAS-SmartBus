@@ -186,6 +186,19 @@ class FirestoreService {
     }
   }
 
+  // Get all schedules
+  Future<List<BusSchedule>> getSchedules() async {
+    try {
+      final snapshot = await _firestore.collection('schedules').get();
+      return snapshot.docs
+          .map((doc) => BusSchedule.fromMap(doc.data()))
+          .toList();
+    } catch (e) {
+      print('Error getting schedules: $e');
+      return [];
+    }
+  }
+
   // Add schedule
   Future<String?> addSchedule(BusSchedule schedule) async {
     try {
@@ -250,6 +263,60 @@ class FirestoreService {
     } catch (e) {
       print('Error getting reports: $e');
       return [];
+    }
+  }
+
+  // Get reports by student/device id
+  Stream<List<Report>> getReportsByStudentId(String studentId) {
+    return _firestore
+        .collection('reports')
+        .where('studentId', isEqualTo: studentId)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => Report.fromMap(doc.data()))
+          .toList();
+    });
+  }
+
+  // Stream all reports
+  Stream<List<Report>> getReportsStream() {
+    return _firestore.collection('reports').snapshots().map((snapshot) {
+      return snapshot.docs
+          .map((doc) => Report.fromMap(doc.data()))
+          .toList();
+    });
+  }
+
+  // Stream report messages
+  Stream<List<ReportMessage>> getReportMessagesStream(String reportId) {
+    return _firestore
+        .collection('reports')
+        .doc(reportId)
+        .collection('messages')
+        .orderBy('createdAt')
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => ReportMessage.fromMap(doc.data()))
+          .toList();
+    });
+  }
+
+  // Add report message
+  Future<String?> addReportMessage({
+    required String reportId,
+    required ReportMessage message,
+  }) async {
+    try {
+      await _firestore
+          .collection('reports')
+          .doc(reportId)
+          .collection('messages')
+          .add(message.toMap());
+      return null;
+    } catch (e) {
+      return 'Error adding report message: $e';
     }
   }
 

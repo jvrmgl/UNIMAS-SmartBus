@@ -1,5 +1,6 @@
 enum ReportStatus { pending, reviewed, resolved, rejected }
 enum ReportCategory { cleanliness, safety, delay, behavior, other }
+enum ReportMessageSender { guest, admin }
 
 class Report {
   final String reportId;
@@ -91,6 +92,41 @@ class Report {
       createdAt: createdAt ?? this.createdAt,
       resolvedAt: resolvedAt ?? this.resolvedAt,
       adminNotes: adminNotes ?? this.adminNotes,
+    );
+  }
+}
+
+class ReportMessage {
+  final String senderId; // deviceId for guest, uid for admin
+  final ReportMessageSender senderType;
+  final String message;
+  final DateTime createdAt;
+
+  ReportMessage({
+    required this.senderId,
+    required this.senderType,
+    required this.message,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'senderId': senderId,
+      'senderType': senderType.toString().split('.').last,
+      'message': message,
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  factory ReportMessage.fromMap(Map<String, dynamic> map) {
+    return ReportMessage(
+      senderId: map['senderId'] as String,
+      senderType: ReportMessageSender.values.firstWhere(
+        (type) => type.toString().split('.').last == map['senderType'],
+        orElse: () => ReportMessageSender.guest,
+      ),
+      message: map['message'] as String,
+      createdAt: DateTime.parse(map['createdAt'] as String),
     );
   }
 }

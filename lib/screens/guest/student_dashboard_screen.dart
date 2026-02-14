@@ -5,6 +5,10 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../constants/app_theme.dart';
+import '../../models/schedule_model.dart';
+import '../../models/route_model.dart';
+import '../../services/firestore_service.dart';
+import 'report_screen.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   const StudentDashboardScreen({super.key});
@@ -16,14 +20,17 @@ class StudentDashboardScreen extends StatefulWidget {
 class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final FirestoreService _firestoreService = FirestoreService();
+  String? _selectedRouteId;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    
-    // Load initial data
-    Future.microtask(() {
+
+    // Load initial data after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       context.read<BusProvider>().fetchBuses();
       context.read<RouteProvider>().fetchRoutes();
       context.read<RouteProvider>().fetchBusStops();
@@ -74,9 +81,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                         ),
                         TextButton(
                           onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Report feature coming soon'),
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ReportScreen(),
                               ),
                             );
                           },
@@ -123,30 +130,112 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   }
 
   Widget _buildSchedulesTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.schedule, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text(
-            'Bus Schedules',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Schedules view coming soon',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () {
-              // Implement schedule navigation
-            },
-            child: const Text('View Schedules'),
-          ),
-        ],
-      ),
+    return Consumer<RouteProvider>(
+      builder: (context, routeProvider, _) {
+        return FutureBuilder<List<BusSchedule>>(
+          future: _firestoreService.getSchedules(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final schedules = snapshot.data ?? [];
+            if (schedules.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.schedule, size: 64, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No schedules available',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            final filteredSchedules = _selectedRouteId == null
+                ? schedules
+                : schedules
+                    .where((schedule) => schedule.routeId == _selectedRouteId)
+                    .toList();
+
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                DropdownButtonFormField<String>(
+                  value: _selectedRouteId,
+                  decoration: const InputDecoration(
+                    labelText: 'Filter by Route',
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('All Routes'),
+                    ),
+                    ...routeProvider.routes.map(
+                      (route) => DropdownMenuItem(
+                        value: route.routeId,
+                        child: Text(route.routeName),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _selectedRouteId = value);
+                  },
+                ),
+                const SizedBox(height: 16),
+                if (filteredSchedules.isEmpty)
+                  Center(
+                    child: Text(
+                      'No schedules available',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
+                else
+                  ...filteredSchedules.map((schedule) {
+                    BusRoute? route;
+                    try {
+                      route = routeProvider.routes.firstWhere(
+                        (route) => route.routeId == schedule.routeId,
+                      );
+                    } catch (_) {
+                      route = null;
+                    }
+                    final routeLabel = route?.routeName ?? schedule.routeId;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              routeLabel,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              schedule.day,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              schedule.timeRange,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
