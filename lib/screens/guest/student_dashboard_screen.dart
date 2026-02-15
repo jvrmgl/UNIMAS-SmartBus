@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:carousel_slider/carousel_slider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../constants/app_theme.dart';
-import '../../models/schedule_model.dart';
-import '../../models/route_model.dart';
+import '../../models/bus_stop_model.dart';
+import '../../models/schedule_image_model.dart';
 import '../../services/firestore_service.dart';
 import 'report_screen.dart';
+import '../shared/bus_detail_screen.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   const StudentDashboardScreen({super.key});
@@ -21,7 +23,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirestoreService _firestoreService = FirestoreService();
-  String? _selectedRouteId;
 
   @override
   void initState() {
@@ -50,6 +51,39 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
       appBar: AppBar(
         title: const Text('UNIMAS SmartBus'),
         elevation: 0,
+        actions: [
+          Consumer<AnnouncementProvider>(
+            builder: (context, announcementProvider, _) {
+              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              return Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: () {
+                      _showNotificationsDialog();
+                    },
+                  ),
+                  if (hasUnread)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 8,
+                          minHeight: 8,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -79,19 +113,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                             color: Colors.white70,
                           ),
                         ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const ReportScreen(),
-                              ),
-                            );
-                          },
-                          child: const Text(
-                            'Report',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
+                        const SizedBox.shrink(),
                       ],
                     ),
                   ],
@@ -109,7 +131,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
               Tab(icon: Icon(Icons.schedule), text: 'Schedules'),
               Tab(icon: Icon(Icons.directions_bus), text: 'Buses'),
               Tab(icon: Icon(Icons.route), text: 'Routes'),
-              Tab(icon: Icon(Icons.notifications), text: 'News'),
+              Tab(icon: Icon(Icons.report), text: 'Reports'),
             ],
           ),
           // Tab Views
@@ -120,7 +142,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                 _buildSchedulesTab(),
                 _buildBusesTab(),
                 _buildRoutesTab(),
-                _buildAnnouncementsTab(),
+                _buildReportsTab(),
               ],
             ),
           ),
@@ -130,112 +152,138 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   }
 
   Widget _buildSchedulesTab() {
-    return Consumer<RouteProvider>(
-      builder: (context, routeProvider, _) {
-        return FutureBuilder<List<BusSchedule>>(
-          future: _firestoreService.getSchedules(),
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Bus Schedule Images Carousel - Dynamic from Firestore
+        StreamBuilder<List<ScheduleImage>>(
+          stream: _firestoreService.streamScheduleImages(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final schedules = snapshot.data ?? [];
-            if (schedules.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.schedule, size: 64, color: Colors.grey),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No schedules available',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ],
+              return Card(
+                elevation: 4,
+                child: SizedBox(
+                  height: 400,
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 ),
               );
             }
 
-            final filteredSchedules = _selectedRouteId == null
-                ? schedules
-                : schedules
-                    .where((schedule) => schedule.routeId == _selectedRouteId)
-                    .toList();
-
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                DropdownButtonFormField<String>(
-                  value: _selectedRouteId,
-                  decoration: const InputDecoration(
-                    labelText: 'Filter by Route',
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('All Routes'),
-                    ),
-                    ...routeProvider.routes.map(
-                      (route) => DropdownMenuItem(
-                        value: route.routeId,
-                        child: Text(route.routeName),
+            if (snapshot.hasError) {
+              return Card(
+                elevation: 4,
+                child: SizedBox(
+                  height: 400,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red.shade400,
                       ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    setState(() => _selectedRouteId = value);
-                  },
-                ),
-                const SizedBox(height: 16),
-                if (filteredSchedules.isEmpty)
-                  Center(
-                    child: Text(
-                      'No schedules available',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  )
-                else
-                  ...filteredSchedules.map((schedule) {
-                    BusRoute? route;
-                    try {
-                      route = routeProvider.routes.firstWhere(
-                        (route) => route.routeId == schedule.routeId,
-                      );
-                    } catch (_) {
-                      route = null;
-                    }
-                    final routeLabel = route?.routeName ?? schedule.routeId;
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              routeLabel,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              schedule.day,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              schedule.timeRange,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading schedules',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.red.shade600,
                         ),
                       ),
-                    );
-                  }),
-              ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '${snapshot.error}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey.shade600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final scheduleImages = snapshot.data ?? [];
+
+            if (scheduleImages.isEmpty) {
+              return Card(
+                elevation: 4,
+                child: SizedBox(
+                  height: 400,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 64,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No schedule images available',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Schedule images will appear here when admin uploads them',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey.shade500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return Card(
+              elevation: 4,
+              clipBehavior: Clip.antiAlias,
+              child: CarouselSlider(
+                options: CarouselOptions(
+                  height: 400,
+                  viewportFraction: 1.0,
+                  enableInfiniteScroll: scheduleImages.length > 1,
+                  autoPlay: scheduleImages.length > 1,
+                  autoPlayInterval: const Duration(seconds: 10),
+                  autoPlayAnimationDuration: const Duration(milliseconds: 800),
+                  enlargeCenterPage: false,
+                ),
+                items: scheduleImages.map((scheduleImage) {
+                  return _buildNetworkScheduleImage(
+                    scheduleImage.imageUrl,
+                    scheduleImage.title,
+                  );
+                }).toList(),
+              ),
             );
           },
-        );
-      },
+        ),
+        const SizedBox(height: 24),
+        // Info card about schedules
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Bus schedules are managed by administrators. Check back regularly for updates.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -328,10 +376,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                         ),
                         TextButton(
                           onPressed: () {
-                            busProvider.selectBus(bus);
-                            // Navigate to bus details
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => BusDetailScreen(bus: bus),
+                              ),
+                            );
                           },
-                          child: const Text('View Details'),
+                          child: const Text('Board Bus'),
                         ),
                       ],
                     ),
@@ -373,9 +424,25 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           itemCount: routeProvider.routes.length,
           itemBuilder: (context, index) {
             final route = routeProvider.routes[index];
+            
+            // Get stops for this route
+            final stops = route.stopIds
+                .map((stopId) {
+                  try {
+                    return routeProvider.busStops.firstWhere(
+                      (stop) => stop.stopId == stopId,
+                    );
+                  } catch (_) {
+                    return null;
+                  }
+                })
+                .where((stop) => stop != null)
+                .cast<BusStop>()
+                .toList();
+            
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
-              child: ListTile(
+              child: ExpansionTile(
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -387,16 +454,69 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
                   ),
                 ),
-                title: Text(route.routeName),
+                title: Text(
+                  route.routeName,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: Text('${route.stopIds.length} stops'),
-                trailing: const Icon(Icons.arrow_forward),
-                onTap: () {
-                  routeProvider.selectRoute(route);
-                  // Navigate to route details
-                },
+                children: [
+                  if (stops.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'No stop data available. Please ensure stops are added to Firebase.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  else
+                    ...stops.asMap().entries.map((entry) {
+                      final stopIndex = entry.key;
+                      final stop = entry.value;
+                      final isLast = stopIndex == stops.length - 1;
+                      
+                      return ListTile(
+                        leading: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${stopIndex + 1}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (!isLast)
+                              Container(
+                                width: 2,
+                                height: 20,
+                                color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                              ),
+                          ],
+                        ),
+                        title: Text(stop.stopName),
+                        subtitle: Text(stop.stopCode),
+                        dense: true,
+                      );
+                    }),
+                ],
               ),
             );
           },
@@ -476,5 +596,88 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
       },
     );
   }
+
+  Widget _buildReportsTab() {
+    return const ReportScreen();
+  }
+
+  void _showNotificationsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Notifications'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: _buildAnnouncementsTab(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildNetworkScheduleImage(String imageUrl, String title) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: Image.network(
+        imageUrl,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return ColoredBox(
+            color: Colors.grey.shade100,
+            child: Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return ColoredBox(
+            color: Colors.grey.shade100,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.broken_image,
+                  size: 64,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Failed to load image',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ), // closes Image.network
+    ), // closes SizedBox
+  ); // closes DecoratedBox
+}
 
 }

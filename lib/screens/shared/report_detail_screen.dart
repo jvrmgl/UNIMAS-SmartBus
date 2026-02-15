@@ -31,7 +31,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _deviceService.initialize();
+    // DeviceService is now a singleton and auto-initializes when needed
     _selectedStatus = widget.report.status;
     if (widget.report.adminNotes != null) {
       _adminNotesController.text = widget.report.adminNotes!;

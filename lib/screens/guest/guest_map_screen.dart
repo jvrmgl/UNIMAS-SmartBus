@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/location_provider.dart';
+import '../../providers/announcement_provider.dart';
 import '../../models/bus_stop_model.dart';
 import '../../constants/app_constants.dart';
 import '../../constants/app_theme.dart';
@@ -45,11 +46,13 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     // Load buses and routes
     final busProvider = context.read<BusProvider>();
     final routeProvider = context.read<RouteProvider>();
+    final announcementProvider = context.read<AnnouncementProvider>();
 
     // Trigger initial data load
     await busProvider.fetchBuses();
     await routeProvider.fetchRoutes();
     await routeProvider.fetchBusStops();
+    await announcementProvider.fetchAnnouncements();
   }
 
   Set<Marker> _buildMarkers(
@@ -205,6 +208,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
         : _destinationController.text;
 
     final location = await _geocodeAddress(query);
+    if (!mounted) return;
+    
     if (location == null) {
       _showMessage('Location not found. Try a more specific name.');
       return;
@@ -321,12 +326,18 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     setState(() => _isDetectingLocation = true);
 
     try {
+      // Read providers before any async operations
       final locationProvider = context.read<LocationProvider>();
+      final routeProvider = context.read<RouteProvider>();
       
       // Check and request permission if needed
       final hasPermission = await locationProvider.checkLocationPermission();
+      if (!mounted) return;
+      
       if (!hasPermission) {
         final granted = await locationProvider.requestLocationPermission();
+        if (!mounted) return;
+        
         if (!granted) {
           _showMessage('Location permission denied');
           setState(() => _isDetectingLocation = false);
@@ -336,6 +347,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
 
       // Get current location
       await locationProvider.getCurrentLocation();
+      if (!mounted) return;
+      
       final position = locationProvider.currentPosition;
 
       if (position == null) {
@@ -347,9 +360,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       // Move camera to user location
       final userLocation = LatLng(position.latitude, position.longitude);
       await _moveCamera(userLocation);
+      if (!mounted) return;
 
       // Find nearby bus stops
-      final routeProvider = context.read<RouteProvider>();
       final nearbyStops = _findNearbyStops(
         position.latitude,
         position.longitude,
@@ -357,15 +370,78 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       );
 
       // Show nearby stops in bottom sheet
-      if (mounted) {
-        _showNearbyStops(position.latitude, position.longitude, nearbyStops);
-      }
+      _showNearbyStops(position.latitude, position.longitude, nearbyStops);
 
       setState(() => _isDetectingLocation = false);
     } catch (e) {
+      if (!mounted) return;
       _showMessage('Error: ${e.toString()}');
       setState(() => _isDetectingLocation = false);
     }
+  }
+
+  void _showNotificationsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Notifications'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                if (announcementProvider.isLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (announcementProvider.announcements.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No announcements'),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: announcementProvider.announcements.length,
+                  itemBuilder: (context, index) {
+                    final announcement = announcementProvider.announcements[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              announcement.title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              announcement.description,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -375,6 +451,39 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
         title: const Text('UNIMAS SmartBus'),
         centerTitle: true,
         elevation: 0,
+        actions: [
+          Consumer<AnnouncementProvider>(
+            builder: (context, announcementProvider, _) {
+              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              return Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: () {
+                      _showNotificationsDialog();
+                    },
+                  ),
+                  if (hasUnread)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 8,
+                          minHeight: 8,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -410,7 +519,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 4,
                   ),
                 ],
@@ -489,10 +598,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             ),
           ),
 
-          // Location detection button (positioned above zoom controls)
+          // Location detection button
           Positioned(
-            right: 16,
-            bottom: 180,
+            right: 8,
+            bottom: 110,
             child: Material(
               elevation: 4,
               shape: const CircleBorder(),

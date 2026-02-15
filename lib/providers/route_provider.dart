@@ -71,7 +71,6 @@ class RouteProvider extends ChangeNotifier {
                     latitude: 0,
                     longitude: 0,
                     description: '',
-                    facilities: [],
                     createdAt: DateTime.now(),
                   ),
                 ))

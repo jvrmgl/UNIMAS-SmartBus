@@ -21,7 +21,6 @@ class BusRoute {
   final DateTime createdAt;
   final bool isActive;
   final String description;
-  final int estimatedDuration; // in minutes
 
   BusRoute({
     required this.routeId,
@@ -31,7 +30,6 @@ class BusRoute {
     required this.createdAt,
     required this.isActive,
     required this.description,
-    required this.estimatedDuration,
   });
 
   Map<String, dynamic> toMap() {
@@ -43,7 +41,6 @@ class BusRoute {
       'createdAt': createdAt.toIso8601String(),
       'isActive': isActive,
       'description': description,
-      'estimatedDuration': estimatedDuration,
     };
   }
 
@@ -56,7 +53,6 @@ class BusRoute {
       createdAt: _parseDateTime(map['createdAt']),
       isActive: map['isActive'] as bool? ?? true,
       description: map['description'] as String? ?? '',
-      estimatedDuration: map['estimatedDuration'] as int? ?? 0,
     );
   }
 
@@ -68,7 +64,6 @@ class BusRoute {
     DateTime? createdAt,
     bool? isActive,
     String? description,
-    int? estimatedDuration,
   }) {
     return BusRoute(
       routeId: routeId ?? this.routeId,
@@ -78,7 +73,6 @@ class BusRoute {
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
       description: description ?? this.description,
-      estimatedDuration: estimatedDuration ?? this.estimatedDuration,
     );
   }
 }

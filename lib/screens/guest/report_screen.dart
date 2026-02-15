@@ -35,7 +35,7 @@ class _ReportScreenState extends State<ReportScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _deviceService.initialize();
+    // DeviceService is now a singleton and auto-initializes when needed
   }
 
   @override
@@ -100,6 +100,8 @@ class _ReportScreenState extends State<ReportScreen>
     );
 
     final result = await _firestoreService.submitReport(report);
+    if (!mounted) return;
+    
     setState(() => _isSubmitting = false);
 
     if (result == null) {

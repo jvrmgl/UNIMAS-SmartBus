@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_constants.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
+import '../../providers/announcement_provider.dart';
 
 class AdminMapScreen extends StatefulWidget {
   const AdminMapScreen({super.key});
@@ -24,10 +25,76 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   void _loadData() async {
     final busProvider = context.read<BusProvider>();
     final routeProvider = context.read<RouteProvider>();
+    final announcementProvider = context.read<AnnouncementProvider>();
 
     await busProvider.fetchBuses();
     await routeProvider.fetchRoutes();
     await routeProvider.fetchBusStops();
+    await announcementProvider.fetchAnnouncements();
+  }
+
+  void _showNotificationsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Notifications'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                if (announcementProvider.isLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (announcementProvider.announcements.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No announcements'),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: announcementProvider.announcements.length,
+                  itemBuilder: (context, index) {
+                    final announcement = announcementProvider.announcements[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              announcement.title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              announcement.description,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Set<Marker> _buildMarkers(
@@ -77,6 +144,39 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
       appBar: AppBar(
         title: const Text('Admin Map'),
         elevation: 0,
+        actions: [
+          Consumer<AnnouncementProvider>(
+            builder: (context, announcementProvider, _) {
+              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              return Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: () {
+                      _showNotificationsDialog();
+                    },
+                  ),
+                  if (hasUnread)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 8,
+                          minHeight: 8,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -110,7 +210,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 4,
                       ),
                     ],

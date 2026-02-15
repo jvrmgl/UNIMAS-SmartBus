@@ -20,7 +20,6 @@ class BusStop {
   final double latitude;
   final double longitude;
   final String description;
-  final List<String> facilities; // e.g., ['shelter', 'bench', 'lighting']
   final DateTime createdAt;
   final bool isActive;
 
@@ -31,7 +30,6 @@ class BusStop {
     required this.latitude,
     required this.longitude,
     required this.description,
-    required this.facilities,
     required this.createdAt,
     this.isActive = true,
   });
@@ -44,7 +42,6 @@ class BusStop {
       'latitude': latitude,
       'longitude': longitude,
       'description': description,
-      'facilities': facilities,
       'createdAt': createdAt.toIso8601String(),
       'isActive': isActive,
     };
@@ -58,7 +55,6 @@ class BusStop {
       latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
       description: map['description'] as String? ?? '',
-      facilities: List<String>.from(map['facilities'] as List? ?? []),
       createdAt: _parseDateTime(map['createdAt']),
       isActive: map['isActive'] as bool? ?? true,
     );
@@ -71,7 +67,6 @@ class BusStop {
     double? latitude,
     double? longitude,
     String? description,
-    List<String>? facilities,
     DateTime? createdAt,
     bool? isActive,
   }) {
@@ -82,7 +77,6 @@ class BusStop {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       description: description ?? this.description,
-      facilities: facilities ?? this.facilities,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
     );

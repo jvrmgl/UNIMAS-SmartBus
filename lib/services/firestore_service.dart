@@ -7,6 +7,7 @@ import '../models/trip_model.dart';
 import '../models/report_model.dart';
 import '../models/announcement_model.dart';
 import '../models/user_model.dart';
+import '../models/schedule_image_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -16,12 +17,21 @@ class FirestoreService {
   // Get all buses
   Future<List<Bus>> getBuses() async {
     try {
+      print('🔵 Fetching buses from Firebase...');
       final snapshot = await _firestore.collection('buses').get();
-      return snapshot.docs
-          .map((doc) => Bus.fromMap(doc.data()))
-          .toList();
+      print('📦 Got ${snapshot.docs.length} bus documents');
+      
+      final buses = snapshot.docs.map((doc) {
+        print('🚌 Processing bus: ${doc.id}');
+        print('   Data: ${doc.data()}');
+        return Bus.fromMap(doc.data());
+      }).toList();
+      
+      print('✅ Successfully parsed ${buses.length} buses');
+      return buses;
     } catch (e) {
-      print('Error getting buses: $e');
+      print('❌ Error getting buses: $e');
+      print('   Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -85,12 +95,21 @@ class FirestoreService {
   // Get all routes
   Future<List<BusRoute>> getRoutes() async {
     try {
+      print('🔵 Fetching routes from Firebase...');
       final snapshot = await _firestore.collection('routes').get();
-      return snapshot.docs
-          .map((doc) => BusRoute.fromMap(doc.data()))
-          .toList();
+      print('📦 Got ${snapshot.docs.length} route documents');
+      
+      final routes = snapshot.docs.map((doc) {
+        print('🛣️  Processing route: ${doc.id}');
+        print('   Data: ${doc.data()}');
+        return BusRoute.fromMap(doc.data());
+      }).toList();
+      
+      print('✅ Successfully parsed ${routes.length} routes');
+      return routes;
     } catch (e) {
-      print('Error getting routes: $e');
+      print('❌ Error getting routes: $e');
+      print('   Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -247,6 +266,29 @@ class FirestoreService {
           .toList();
     } catch (e) {
       print('Error getting active trips: $e');
+      return [];
+    }
+  }
+
+  // Get completed trips (recent history)
+  Future<List<Trip>> getCompletedTrips({int limit = 10}) async {
+    try {
+      print('🔵 Fetching completed trips...');
+      final snapshot = await _firestore
+          .collection('trips')
+          .where('status', isEqualTo: 'completed')
+          .orderBy('endTime', descending: true)
+          .limit(limit)
+          .get();
+      
+      final trips = snapshot.docs
+          .map((doc) => Trip.fromMap(doc.data()))
+          .toList();
+      
+      print('✅ Got ${trips.length} completed trips');
+      return trips;
+    } catch (e) {
+      print('❌ Error getting completed trips: $e');
       return [];
     }
   }
@@ -426,4 +468,196 @@ class FirestoreService {
       return 'Error updating user role: $e';
     }
   }
+
+  // ============ SCHEDULE IMAGE OPERATIONS ============
+
+  // Get all active schedule images sorted by order
+  Future<List<ScheduleImage>> getScheduleImages() async {
+    try {
+      print('🖼️ Fetching schedule images from Firebase...');
+      final snapshot = await _firestore
+          .collection('schedule_images')
+          .where('isActive', isEqualTo: true)
+          .orderBy('order')
+          .get();
+      
+      print('📦 Got ${snapshot.docs.length} schedule image documents');
+      
+      final images = snapshot.docs.map((doc) {
+        print('🖼️ Processing image: ${doc.id}');
+        print('   Data: ${doc.data()}');
+        return ScheduleImage.fromMap(doc.data());
+      }).toList();
+      
+      print('✅ Successfully parsed ${images.length} schedule images');
+      return images;
+    } catch (e) {
+      print('❌ Error getting schedule images: $e');
+      print('   Stack trace: ${StackTrace.current}');
+      return [];
+    }
+  }
+
+  // Add new schedule image
+  Future<String?> addScheduleImage(ScheduleImage scheduleImage) async {
+    try {
+      await _firestore
+          .collection('schedule_images')
+          .doc(scheduleImage.imageId)
+          .set(scheduleImage.toMap());
+      return null;
+    } catch (e) {
+      return 'Error adding schedule image: $e';
+    }
+  }
+
+  // Update schedule image
+  Future<String?> updateScheduleImage(ScheduleImage scheduleImage) async {
+    try {
+      await _firestore
+          .collection('schedule_images')
+          .doc(scheduleImage.imageId)
+          .update(scheduleImage.toMap());
+      return null;
+    } catch (e) {
+      return 'Error updating schedule image: $e';
+    }
+  }
+
+  // Delete schedule image
+  Future<String?> deleteScheduleImage(String imageId) async {
+    try {
+      await _firestore
+          .collection('schedule_images')
+          .doc(imageId)
+          .delete();
+      return null;
+    } catch (e) {
+      return 'Error deleting schedule image: $e';
+    }
+  }
+
+  // Stream schedule images for real-time updates
+  Stream<List<ScheduleImage>> streamScheduleImages() {
+    print('📡 Starting schedule images stream...');
+    return _firestore
+        .collection('schedule_images')
+        .orderBy('order')
+        .snapshots()
+        .map((snapshot) {
+          print('📡 Stream update: ${snapshot.docs.length} schedule images');
+          return snapshot.docs
+              .map((doc) {
+                try {
+                  print('   Processing: ${doc.id}');
+                  return ScheduleImage.fromMap(doc.data());
+                } catch (e) {
+                  print('   ❌ Error parsing ${doc.id}: $e');
+                  rethrow;
+                }
+              })
+              .where((image) => image.isActive) // Filter active images in code
+              .toList();
+        }).handleError((error) {
+          print('❌ Stream error: $error');
+          return <ScheduleImage>[];
+        });
+  }
+
+  // ============ DEVICE BUS SESSION OPERATIONS ============
+
+  // Check if device has an active bus session
+  Future<String?> getDeviceActiveBusId(String deviceId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('device_bus_sessions')
+          .where('deviceId', isEqualTo: deviceId)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs.first.data()['busId'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('Error getting device active bus: $e');
+      return null;
+    }
+  }
+
+  // Tap into a bus
+  Future<String?> tapInToBus(String deviceId, String busId) async {
+    try {
+      // Check if device already has an active session
+      final existingSession = await getDeviceActiveBusId(deviceId);
+      if (existingSession != null && existingSession != busId) {
+        return 'You are already tapped into another bus';
+      }
+
+      // Create new session
+      final sessionId = '${deviceId}_${DateTime.now().millisecondsSinceEpoch}';
+      await _firestore.collection('device_bus_sessions').doc(sessionId).set({
+        'sessionId': sessionId,
+        'deviceId': deviceId,
+        'busId': busId,
+        'status': 'active',
+        'tappedInAt': FieldValue.serverTimestamp(),
+        'tappedOutAt': null,
+      });
+
+      return null; // Success
+    } catch (e) {
+      print('Error tapping in: $e');
+      return 'Error: $e';
+    }
+  }
+
+  // Tap out from bus
+  Future<String?> tapOutFromBus(String deviceId) async {
+    try {
+      // Find active session
+      final snapshot = await _firestore
+          .collection('device_bus_sessions')
+          .where('deviceId', isEqualTo: deviceId)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        return 'No active session found';
+      }
+
+      // Update session to completed
+      await _firestore
+          .collection('device_bus_sessions')
+          .doc(snapshot.docs.first.id)
+          .update({
+        'status': 'completed',
+        'tappedOutAt': FieldValue.serverTimestamp(),
+      });
+
+      return null; // Success
+    } catch (e) {
+      print('Error tapping out: $e');
+      return 'Error: $e';
+    }
+  }
+
+  // Stream device's active bus session
+  Stream<String?> streamDeviceActiveBusId(String deviceId) {
+    return _firestore
+        .collection('device_bus_sessions')
+        .where('deviceId', isEqualTo: deviceId)
+        .where('status', isEqualTo: 'active')
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs.first.data()['busId'] as String?;
+      }
+      return null;
+    });
+  }
 }
+
