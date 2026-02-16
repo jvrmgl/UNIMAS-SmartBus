@@ -17,7 +17,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _passwordController;
   bool _obscurePassword = true;
   bool _isLoading = false;
-  UserRole _selectedRole = UserRole.driver;
+  bool _isLoginExpanded = false;
   bool _serviceAlerts = true;
   bool _busUpdates = true;
 
@@ -65,39 +65,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
 
         if (mounted && authProvider.currentUser != null) {
-          var userRole = authProvider.currentUser?.role;
-          if (userRole != null && userRole != _selectedRole) {
-            final updated = await authProvider.updateUserRole(_selectedRole);
-            if (!mounted) return;
-            
-            if (updated) {
-              userRole = authProvider.currentUser?.role ?? _selectedRole;
-            }
-          }
+          final userRole = authProvider.currentUser?.role;
+          
+          // Check if user is admin or driver
           if (userRole == UserRole.driver) {
             Navigator.of(context).pushReplacementNamed('/driver');
           } else if (userRole == UserRole.admin) {
             Navigator.of(context).pushReplacementNamed('/admin');
           } else {
-            _showMessage('Only drivers and admins can login here');
+            // User is not staff (admin/driver)
+            _showMessage('Access denied - Staff accounts only');
             await authProvider.signOut();
           }
         } else {
-          final created = await authProvider.ensureUserProfile(
-            role: _selectedRole,
-          );
-          if (!mounted) return;
-          
-          if (created && authProvider.currentUser != null) {
-            final role = authProvider.currentUser!.role;
-            if (role == UserRole.driver) {
-              Navigator.of(context).pushReplacementNamed('/driver');
-            } else if (role == UserRole.admin) {
-              Navigator.of(context).pushReplacementNamed('/admin');
-            }
-          } else {
-            _showMessage('Failed to load user data');
-          }
+          _showMessage('Failed to load user data');
         }
       }
     } else {
@@ -230,7 +211,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context, authProvider, _) {
           final themeProvider = context.watch<ThemeProvider>();
           if (authProvider.isAuthenticated && authProvider.currentUser != null) {
-            _selectedRole = authProvider.currentUser!.role;
             // User is logged in - show account info
             return ListView(
               padding: const EdgeInsets.all(16),
@@ -368,96 +348,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  _buildSectionTitle('Login'),
-                  Text(
-                    'Driver & Admin Login',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Login if you are a driver or admin',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 32),
-                  DropdownButtonFormField<UserRole>(
-                    value: _selectedRole,
-                    decoration: const InputDecoration(
-                      labelText: 'Account Type',
-                      prefixIcon: Icon(Icons.badge),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: UserRole.driver,
-                        child: Text('Driver'),
-                      ),
-                      DropdownMenuItem(
-                        value: UserRole.admin,
-                        child: Text('Admin'),
-                      ),
-                    ],
-                    onChanged: _isLoading
-                        ? null
-                        : (value) {
-                            if (value == null) return;
-                            setState(() {
-                              _selectedRole = value;
-                            });
-                          },
-                  ),
-                  const SizedBox(height: 16),
-                  // Email Field
-                  TextField(
-                    controller: _emailController,
-                    enabled: !_isLoading,
-                    decoration: InputDecoration(
-                      labelText: 'Email Address',
-                      prefixIcon: const Icon(Icons.email),
-                      hintText: 'Enter your email',
-                    ),
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-                  const SizedBox(height: 16),
-                  // Password Field
-                  TextField(
-                    controller: _passwordController,
-                    enabled: !_isLoading,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          );
-                        },
-                      ),
-                      hintText: 'Enter your password',
-                    ),
-                    obscureText: _obscurePassword,
-                  ),
-                  const SizedBox(height: 24),
-                  // Login Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleLogin,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
+                  _buildSectionTitle('Staff Login'),
+                  Card(
+                    child: ExpansionTile(
+                      title: const Text('Staff Login'),
+                      subtitle: const Text('For drivers and administrators'),
+                      leading: const Icon(Icons.badge),
+                      initiallyExpanded: _isLoginExpanded,
+                      onExpansionChanged: (expanded) {
+                        setState(() {
+                          _isLoginExpanded = expanded;
+                        });
+                      },
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Email Field
+                              TextField(
+                                controller: _emailController,
+                                enabled: !_isLoading,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email Address',
+                                  prefixIcon: Icon(Icons.email),
+                                  hintText: 'Enter your email',
+                                ),
+                                keyboardType: TextInputType.emailAddress,
+                              ),
+                              const SizedBox(height: 16),
+                              // Password Field
+                              TextField(
+                                controller: _passwordController,
+                                enabled: !_isLoading,
+                                decoration: InputDecoration(
+                                  labelText: 'Password',
+                                  prefixIcon: const Icon(Icons.lock),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                    ),
+                                    onPressed: () {
+                                      setState(
+                                        () => _obscurePassword = !_obscurePassword,
+                                      );
+                                    },
+                                  ),
+                                  hintText: 'Enter your password',
+                                ),
+                                obscureText: _obscurePassword,
+                              ),
+                              const SizedBox(height: 24),
+                              // Login Button
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : _handleLogin,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : const Text('Login'),
                                 ),
                               ),
-                            )
-                          : const Text('Login'),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),

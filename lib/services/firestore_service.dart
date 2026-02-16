@@ -8,6 +8,7 @@ import '../models/report_model.dart';
 import '../models/announcement_model.dart';
 import '../models/user_model.dart';
 import '../models/schedule_image_model.dart';
+import '../models/student_trip_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -658,6 +659,142 @@ class FirestoreService {
       }
       return null;
     });
+  }
+
+  // ============ STUDENT TRIP OPERATIONS ============
+
+  // Create a new trip when student taps in
+  Future<String?> createStudentTrip({
+    required String deviceId,
+    required String busId,
+  }) async {
+    try {
+      // Get bus details
+      final bus = await getBus(busId);
+      if (bus == null) {
+        return 'Bus not found';
+      }
+
+      // Get route name if assigned
+      String? routeName;
+      if (bus.assignedRoute != null) {
+        final route = await getRoute(bus.assignedRoute!);
+        routeName = route?.routeName;
+      }
+
+      // Create trip
+      final tripId = '${deviceId}_${DateTime.now().millisecondsSinceEpoch}';
+      final trip = StudentTrip(
+        tripId: tripId,
+        deviceId: deviceId,
+        busId: busId,
+        busNumber: bus.busNumber,
+        busRegistrationNumber: bus.registrationNumber,
+        routeId: bus.assignedRoute,
+        routeName: routeName,
+        boardedAt: DateTime.now(),
+        offBoardedAt: null,
+        status: 'active',
+      );
+
+      await _firestore.collection('student_trips').doc(tripId).set(trip.toMap());
+      print('✅ Created trip: $tripId');
+      return null; // Success
+    } catch (e) {
+      print('❌ Error creating trip: $e');
+      return 'Error: $e';
+    }
+  }
+
+  // Complete a trip when student taps out
+  Future<String?> completeStudentTrip(String deviceId) async {
+    try {
+      // Find active trip
+      final snapshot = await _firestore
+          .collection('student_trips')
+          .where('deviceId', isEqualTo: deviceId)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        print('⚠️ No active trip found for device: $deviceId');
+        return null; // No active trip, that's okay
+      }
+
+      // Update trip to completed
+      await _firestore
+          .collection('student_trips')
+          .doc(snapshot.docs.first.id)
+          .update({
+        'offBoardedAt': FieldValue.serverTimestamp(),
+        'status': 'completed',
+      });
+
+      print('✅ Completed trip: ${snapshot.docs.first.id}');
+      return null; // Success
+    } catch (e) {
+      print('❌ Error completing trip: $e');
+      return 'Error: $e';
+    }
+  }
+
+  // Get device's active trip
+  Future<StudentTrip?> getActiveTrip(String deviceId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('student_trips')
+          .where('deviceId', isEqualTo: deviceId)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return StudentTrip.fromMap(snapshot.docs.first.data());
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error getting active trip: $e');
+      return null;
+    }
+  }
+
+  // Stream device's trips (active first, then past trips)
+  Stream<List<StudentTrip>> streamStudentTrips(String deviceId) {
+    return _firestore
+        .collection('student_trips')
+        .where('deviceId', isEqualTo: deviceId)
+        .snapshots()
+        .map((snapshot) {
+      final trips = snapshot.docs
+          .map((doc) => StudentTrip.fromMap(doc.data()))
+          .toList();
+      
+      // Sort in Dart: active trips first, then by boardedAt descending
+      trips.sort((a, b) {
+        // Active trips come first
+        if (a.status == 'active' && b.status != 'active') return -1;
+        if (a.status != 'active' && b.status == 'active') return 1;
+        // Then sort by boardedAt (newest first)
+        return b.boardedAt.compareTo(a.boardedAt);
+      });
+      
+      return trips;
+    });
+  }
+
+  // Get a single trip by ID
+  Future<StudentTrip?> getStudentTrip(String tripId) async {
+    try {
+      final doc = await _firestore.collection('student_trips').doc(tripId).get();
+      if (doc.exists) {
+        return StudentTrip.fromMap(doc.data()!);
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error getting trip: $e');
+      return null;
+    }
   }
 }
 

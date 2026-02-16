@@ -10,6 +10,7 @@ import '../../models/bus_stop_model.dart';
 import '../../models/schedule_image_model.dart';
 import '../../services/firestore_service.dart';
 import 'report_screen.dart';
+import 'student_trips_screen.dart';
 import '../shared/bus_detail_screen.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
@@ -27,7 +28,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
 
     // Load initial data after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -127,11 +128,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
             indicatorColor: AppTheme.primaryColor,
             labelColor: AppTheme.primaryColor,
             unselectedLabelColor: Colors.grey,
+            labelStyle: const TextStyle(fontSize: 11),
             tabs: const [
-              Tab(icon: Icon(Icons.schedule), text: 'Schedules'),
-              Tab(icon: Icon(Icons.directions_bus), text: 'Buses'),
-              Tab(icon: Icon(Icons.route), text: 'Routes'),
-              Tab(icon: Icon(Icons.report), text: 'Reports'),
+              Tab(icon: Icon(Icons.schedule, size: 20), text: 'Schedules'),
+              Tab(icon: Icon(Icons.directions_bus, size: 20), text: 'Buses'),
+              Tab(icon: Icon(Icons.route, size: 20), text: 'Routes'),
+              Tab(icon: Icon(Icons.card_travel, size: 20), text: 'Trips'),
+              Tab(icon: Icon(Icons.report, size: 20), text: 'Reports'),
             ],
           ),
           // Tab Views
@@ -142,6 +145,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                 _buildSchedulesTab(),
                 _buildBusesTab(),
                 _buildRoutesTab(),
+                const StudentTripsScreen(),
                 _buildReportsTab(),
               ],
             ),
@@ -310,85 +314,149 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: busProvider.buses.length,
-          itemBuilder: (context, index) {
-            final bus = busProvider.buses[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return Consumer<RouteProvider>(
+          builder: (context, routeProvider, _) {
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: busProvider.buses.length,
+              itemBuilder: (context, index) {
+                final bus = busProvider.buses[index];
+                
+                // Get route name if bus has assigned route
+                String? routeName;
+                if (bus.assignedRoute != null) {
+                  try {
+                    final route = routeProvider.routes.firstWhere(
+                      (r) => r.routeId == bus.assignedRoute,
+                    );
+                    routeName = route.routeName;
+                  } catch (_) {
+                    routeName = null;
+                  }
+                }
+                
+                final occupancyPercent = bus.getOccupancyPercentage();
+                final isNearCapacity = bus.isNearCapacity();
+                
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'Bus ${bus.busNumber}',
-                              style: Theme.of(context).textTheme.titleMedium,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Bus ${bus.busNumber}',
+                                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.confirmation_number, 
+                                          size: 14, 
+                                          color: Theme.of(context).textTheme.bodySmall?.color),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        bus.registrationNumber,
+                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (routeName != null) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.route, 
+                                            size: 14, 
+                                            color: Colors.blue),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                            routeName,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.blue,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
-                            Text(
-                              bus.registrationNumber,
-                              style: Theme.of(context).textTheme.bodySmall,
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isNearCapacity
+                                    ? Colors.orange
+                                    : Colors.green,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${bus.currentOccupancy}/${bus.capacity}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: bus.isNearCapacity()
-                                ? Colors.orange.shade100
-                                : Colors.green.shade100,
-                            borderRadius: BorderRadius.circular(8),
+                        const SizedBox(height: 12),
+                        // Occupancy Progress
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: occupancyPercent / 100,
+                            minHeight: 8,
+                            backgroundColor: Colors.grey.shade300,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isNearCapacity ? Colors.orange : Colors.green,
+                            ),
                           ),
-                          child: Text(
-                            '${bus.currentOccupancy}/${bus.capacity}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Occupancy Progress
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: bus.getOccupancyPercentage() / 100,
-                        minHeight: 8,
-                        backgroundColor: Colors.grey.shade300,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          bus.isNearCapacity() ? Colors.orange : Colors.green,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Occupancy: ${bus.getOccupancyPercentage().toStringAsFixed(1)}%',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => BusDetailScreen(bus: bus),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Occupancy: ${occupancyPercent.toStringAsFixed(1)}%',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w500,
                               ),
-                            );
-                          },
-                          child: const Text('Board Bus'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => BusDetailScreen(bus: bus),
+                                  ),
+                                );
+                              },
+                              child: const Text('Board Bus'),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );

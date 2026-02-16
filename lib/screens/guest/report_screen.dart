@@ -27,6 +27,8 @@ class _ReportScreenState extends State<ReportScreen>
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _routeController = TextEditingController();
   final TextEditingController _busController = TextEditingController();
+  String? _prefilledBusId; // Store actual busId when pre-filled from trip
+  String? _prefilledRouteId; // Store actual routeId when pre-filled from trip
   bool _isSubmitting = false;
   bool _isUploading = false;
   List<XFile> _selectedImages = [];
@@ -36,6 +38,29 @@ class _ReportScreenState extends State<ReportScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     // DeviceService is now a singleton and auto-initializes when needed
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Get pre-filled data from route arguments (if navigating from trip)
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    
+    if (args != null && _busController.text.isEmpty) {
+      // Only fill once on first load
+      if (args['busId'] != null) {
+        _prefilledBusId = args['busId'] as String;
+      }
+      if (args['busNumber'] != null) {
+        // Show user-friendly bus number in the text field
+        _busController.text = args['busNumber'] as String;
+      }
+      if (args['routeId'] != null) {
+        _prefilledRouteId = args['routeId'] as String;
+        _routeController.text = args['routeId'] as String;
+      }
+    }
   }
 
   @override
@@ -83,15 +108,19 @@ class _ReportScreenState extends State<ReportScreen>
     final reportId = 'report_${DateTime.now().millisecondsSinceEpoch}';
     final imageUrls = await _uploadImages(reportId);
 
+    // Use prefilled busId if available, otherwise use text field value
+    final busId = _prefilledBusId ?? 
+                  (_busController.text.trim().isEmpty ? null : _busController.text.trim());
+    
+    // Use prefilled routeId if available, otherwise use text field value
+    final routeId = _prefilledRouteId ?? 
+                    (_routeController.text.trim().isEmpty ? null : _routeController.text.trim());
+
     final report = Report(
       reportId: reportId,
       studentId: deviceId,
-      busId: _busController.text.trim().isEmpty
-          ? null
-          : _busController.text.trim(),
-      routeId: _routeController.text.trim().isEmpty
-          ? null
-          : _routeController.text.trim(),
+      busId: busId,
+      routeId: routeId,
       category: _category,
       description: description,
       imageUrls: imageUrls,

@@ -468,6 +468,14 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
 
     if (busUpdateResult == null) {
       print('DEBUG: Bus update successful');
+      
+      // Create student trip
+      print('DEBUG: Creating student trip');
+      await _firestoreService.createStudentTrip(
+        deviceId: _deviceId!,
+        busId: bus.busId,
+      );
+      
       setState(() {
         _isUpdating = false;
         _isTappedIn = true;
@@ -515,6 +523,11 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       
       if (tapOutResult == null) {
         print('DEBUG: Tap out successful');
+        
+        // Complete student trip
+        print('DEBUG: Completing student trip');
+        await _firestoreService.completeStudentTrip(_deviceId!);
+        
         setState(() {
           _isUpdating = false;
           _isTappedIn = false;
