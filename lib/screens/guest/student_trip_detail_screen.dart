@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/student_trip_model.dart';
+import 'report_screen.dart';
 
 class StudentTripDetailScreen extends StatelessWidget {
   final StudentTrip trip;
@@ -69,15 +70,19 @@ class StudentTripDetailScreen extends StatelessWidget {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.pushNamed(
+                  Navigator.push(
                     context,
-                    '/report',
-                    arguments: {
-                      'busId': trip.busId,
-                      'busNumber': trip.busNumber,
-                      'routeId': trip.routeId,
-                      'tripId': trip.tripId,
-                    },
+                    MaterialPageRoute(
+                      builder: (context) => const ReportScreen(),
+                      settings: RouteSettings(
+                        arguments: {
+                          'busId': trip.busId,
+                          'busNumber': trip.busNumber,
+                          'routeId': trip.routeId,
+                          'tripId': trip.tripId,
+                        },
+                      ),
+                    ),
                   );
                 },
                 icon: const Icon(Icons.report_problem),

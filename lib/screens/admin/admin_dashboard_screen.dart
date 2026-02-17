@@ -5,6 +5,11 @@ import '../../providers/announcement_provider.dart';
 import '../../constants/app_theme.dart';
 import 'reports_management_screen.dart';
 import 'manage_schedule_screen.dart';
+import 'buses_management_screen.dart';
+import 'drivers_management_screen.dart';
+import 'routes_management_screen.dart';
+import 'notifications_management_screen.dart';
+import 'analytics_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -146,7 +151,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Manage buses, drivers, routes and reports',
+                      'Manage buses, drivers, routes and more',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.white70,
                       ),
@@ -167,16 +172,37 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   icon: Icons.directions_bus,
                   title: 'Buses',
                   subtitle: 'Manage buses',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const BusesManagementScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildAdminCard(
                   icon: Icons.people,
                   title: 'Drivers',
                   subtitle: 'Manage drivers',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const DriversManagementScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildAdminCard(
                   icon: Icons.route,
                   title: 'Routes',
                   subtitle: 'Manage routes',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const RoutesManagementScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildAdminCard(
                   icon: Icons.schedule,
@@ -191,14 +217,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   },
                 ),
                 _buildAdminCard(
-                  icon: Icons.announcement,
-                  title: 'Announcements',
-                  subtitle: 'Create announcements',
-                ),
-                _buildAdminCard(
                   icon: Icons.notifications,
                   title: 'Notifications',
-                  subtitle: 'Send push alerts',
+                  subtitle: 'Send announcements',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationsManagementScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildAdminCard(
                   icon: Icons.report,
@@ -216,6 +244,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   icon: Icons.analytics,
                   title: 'Analytics',
                   subtitle: 'View statistics',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const AnalyticsScreen(),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
