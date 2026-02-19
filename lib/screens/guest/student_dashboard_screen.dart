@@ -294,11 +294,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   Widget _buildBusesTab() {
     return Consumer<BusProvider>(
       builder: (context, busProvider, _) {
+        final activeBuses = busProvider.buses.where((bus) => bus.isActive).toList();
+
         if (busProvider.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (busProvider.buses.isEmpty) {
+        if (activeBuses.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -306,7 +308,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                 Icon(Icons.directions_bus_filled, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
                 Text(
-                  'No buses available',
+                  'No active buses available',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ],
@@ -318,9 +320,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           builder: (context, routeProvider, _) {
             return ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: busProvider.buses.length,
+              itemCount: activeBuses.length,
               itemBuilder: (context, index) {
-                final bus = busProvider.buses[index];
+                final bus = activeBuses[index];
                 
                 // Get route name if bus has assigned route
                 String? routeName;

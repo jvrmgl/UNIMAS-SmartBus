@@ -5,6 +5,9 @@ import '../../constants/app_constants.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../models/report_model.dart';
+import '../../services/firestore_service.dart';
+import 'analytics_screen.dart';
 
 class AdminMapScreen extends StatefulWidget {
   const AdminMapScreen({super.key});
@@ -14,6 +17,8 @@ class AdminMapScreen extends StatefulWidget {
 }
 
 class _AdminMapScreenState extends State<AdminMapScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
+
   @override
   void initState() {
     super.initState();
@@ -138,6 +143,40 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     return markers;
   }
 
+  Widget _buildCompactStat({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey[600],
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -202,26 +241,80 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
               builder: (context, busProvider, routeProvider, _) {
                 final activeBuses =
                     busProvider.buses.where((bus) => bus.isActive).length;
-                final textStyle = Theme.of(context).textTheme.bodyMedium;
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 4,
-                      ),
-                    ],
+                final totalBuses = busProvider.buses.length;
+                final totalRoutes = routeProvider.routes.length;
+
+                return InkWell(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Active buses: $activeBuses', style: textStyle),
-                      Text('Routes: ${routeProvider.routes.length}', style: textStyle),
-                      Text('Reports: --', style: textStyle),
-                    ],
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Expanded(
+                          child: _buildCompactStat(
+                            icon: Icons.directions_bus,
+                            label: 'Active Buses',
+                            value: '$activeBuses/$totalBuses',
+                            color: Colors.blue,
+                          ),
+                        ),
+                        Expanded(
+                          child: _buildCompactStat(
+                            icon: Icons.route,
+                            label: 'Routes',
+                            value: totalRoutes.toString(),
+                            color: Colors.green,
+                          ),
+                        ),
+                        Expanded(
+                          child: StreamBuilder<int>(
+                            stream: _firestoreService.getTodayCompletedTripsCountStream(),
+                            builder: (context, snapshot) {
+                              final count = snapshot.data ?? 0;
+                              return _buildCompactStat(
+                                icon: Icons.people,
+                                label: 'Passengers Today',
+                                value: count.toString(),
+                                color: Colors.orange,
+                              );
+                            },
+                          ),
+                        ),
+                        Expanded(
+                          child: StreamBuilder<List<Report>>(
+                            stream: _firestoreService.getReportsStream(),
+                            builder: (context, snapshot) {
+                              final pendingCount = snapshot.hasData
+                                  ? snapshot.data!
+                                      .where((r) => r.status == ReportStatus.pending)
+                                      .length
+                                  : 0;
+                              return _buildCompactStat(
+                                icon: Icons.report_problem,
+                                label: 'Pending Reports',
+                                value: pendingCount.toString(),
+                                color: Colors.red,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },

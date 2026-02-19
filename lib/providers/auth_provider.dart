@@ -11,19 +11,25 @@ class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   firebase_auth.User? _firebaseUser;
   bool _isLoading = false;
+  bool _isInitialized = false;
   String? _error;
 
   User? get currentUser => _currentUser;
   firebase_auth.User? get firebaseUser => _firebaseUser;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  bool get isAuthenticated => _firebaseUser != null;
+  bool get isAuthenticated => _firebaseUser != null && _isInitialized;
+  bool get isInitialized => _isInitialized;
 
   AuthProvider() {
     _initializeAuth();
   }
 
   void _initializeAuth() {
+    // Listen to Firebase auth state changes.
+    // _isInitialized becomes true only after the first event is fully
+    // processed (including the Firestore user-data fetch), so callers
+    // can rely on both _firebaseUser and _currentUser being up-to-date.
     _authService.authStateChanges.listen((firebaseUser) async {
       _firebaseUser = firebaseUser;
       if (firebaseUser != null) {
@@ -31,6 +37,7 @@ class AuthProvider extends ChangeNotifier {
       } else {
         _currentUser = null;
       }
+      _isInitialized = true;
       notifyListeners();
     });
   }

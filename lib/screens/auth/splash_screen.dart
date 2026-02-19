@@ -12,36 +12,57 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _minDelayElapsed = false;
+
   @override
   void initState() {
     super.initState();
-    _navigateToNextScreen();
+    // Enforce a minimum 2-second splash display time.
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() => _minDelayElapsed = true);
+        _tryNavigate();
+      }
+    });
+
+    // Also listen for changes in AuthProvider so we navigate as soon as
+    // both the delay has elapsed AND auth state is fully resolved.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthProvider>().addListener(_tryNavigate);
+    });
   }
 
-  void _navigateToNextScreen() async {
-    // Wait for 2 seconds to show splash screen
-    await Future.delayed(const Duration(seconds: 2));
+  @override
+  void dispose() {
+    // Remove the listener when this screen is disposed.
+    context.read<AuthProvider>().removeListener(_tryNavigate);
+    super.dispose();
+  }
 
-    if (mounted) {
-      final authProvider = context.read<AuthProvider>();
-      final isAuthenticated = authProvider.isAuthenticated;
+  void _tryNavigate() {
+    if (!mounted) return;
+    final authProvider = context.read<AuthProvider>();
 
-      if (isAuthenticated) {
-        // Navigate to appropriate dashboard based on user role
-        final userRole = authProvider.currentUser?.role;
-        if (userRole == UserRole.student) {
-          Navigator.of(context).pushReplacementNamed('/student');
-        } else if (userRole == UserRole.driver) {
-          Navigator.of(context).pushReplacementNamed('/driver');
-        } else if (userRole == UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin');
-        } else {
-          Navigator.of(context).pushReplacementNamed('/guest');
-        }
+    // Wait until both the minimum delay has passed and Firebase + Firestore
+    // have finished restoring the session.
+    if (!_minDelayElapsed || !authProvider.isInitialized) return;
+
+    final userRole = authProvider.currentUser?.role;
+
+    if (authProvider.isAuthenticated) {
+      if (userRole == UserRole.student) {
+        Navigator.of(context).pushReplacementNamed('/student');
+      } else if (userRole == UserRole.driver) {
+        Navigator.of(context).pushReplacementNamed('/driver');
+      } else if (userRole == UserRole.admin) {
+        Navigator.of(context).pushReplacementNamed('/admin');
       } else {
-        // Navigate to guest map (no login required)
+        // Authenticated but no recognised role — fall back to guest view.
         Navigator.of(context).pushReplacementNamed('/guest');
       }
+    } else {
+      // Not logged in — open the guest map view.
+      Navigator.of(context).pushReplacementNamed('/guest');
     }
   }
 

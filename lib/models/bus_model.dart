@@ -23,7 +23,9 @@ class Bus {
   final bool isActive;
   final double latitude;
   final double longitude;
-  final String? assignedRoute; // Added: Current route assignment
+  final String? assignedRoute;
+  final String? driverId;    // UID of the assigned driver
+  final String? driverName;  // Display name of the assigned driver
 
   Bus({
     required this.busId,
@@ -36,6 +38,8 @@ class Bus {
     required this.latitude,
     required this.longitude,
     this.assignedRoute,
+    this.driverId,
+    this.driverName,
   });
 
   // Calculate occupancy percentage
@@ -61,6 +65,8 @@ class Bus {
       'latitude': latitude,
       'longitude': longitude,
       'assignedRoute': assignedRoute,
+      'driverId': driverId,
+      'driverName': driverName,
     };
   }
 
@@ -76,6 +82,8 @@ class Bus {
       latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
       assignedRoute: map['assignedRoute'] as String?,
+      driverId: map['driverId'] as String?,
+      driverName: map['driverName'] as String?,
     );
   }
 
@@ -90,6 +98,8 @@ class Bus {
     double? latitude,
     double? longitude,
     String? assignedRoute,
+    String? driverId,
+    String? driverName,
   }) {
     return Bus(
       busId: busId ?? this.busId,
@@ -102,6 +112,8 @@ class Bus {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       assignedRoute: assignedRoute ?? this.assignedRoute,
+      driverId: driverId ?? this.driverId,
+      driverName: driverName ?? this.driverName,
     );
   }
 }

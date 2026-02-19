@@ -246,6 +246,36 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     );
   }
 
+  Widget _statusChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     // Use Geolocator's built-in distance calculation (returns meters)
     return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / 1000; // Convert to km
@@ -593,6 +623,92 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                           )
                           .toList(),
                     ),
+
+                  // ── Live status strip ──────────────────────────────
+                  Consumer2<BusProvider, AnnouncementProvider>(
+                    builder: (context, busProvider, announcementProvider, _) {
+                      final activeBuses = busProvider.buses
+                          .where((b) => b.isActive)
+                          .length;
+                      final totalBuses = busProvider.buses.length;
+                      final latestAnnouncement =
+                          announcementProvider.announcements.isNotEmpty
+                              ? announcementProvider.announcements.first
+                              : null;
+
+                      return Column(
+                        children: [
+                          const Divider(height: 12, thickness: 0.8),
+                          Row(
+                            children: [
+                              // Active buses chip
+                              _statusChip(
+                                icon: Icons.directions_bus,
+                                label:
+                                    '$activeBuses/$totalBuses Buses Active',
+                                color: activeBuses > 0
+                                    ? Colors.green
+                                    : Colors.grey,
+                              ),
+                              const SizedBox(width: 8),
+                              // Routes chip
+                              Consumer<RouteProvider>(
+                                builder: (context, routeProvider, _) =>
+                                    _statusChip(
+                                  icon: Icons.route,
+                                  label:
+                                      '${routeProvider.routes.length} Routes',
+                                  color: Colors.blue,
+                                ),
+                              ),
+                              // Announcement badge
+                              if (latestAnnouncement != null) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: _showNotificationsDialog,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade50,
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                        border: Border.all(
+                                            color: Colors.orange.shade200),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.campaign,
+                                              size: 13,
+                                              color: Colors.orange.shade700),
+                                          const SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              latestAnnouncement.title,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color:
+                                                    Colors.orange.shade800,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                              ),
+                                              maxLines: 1,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
             ),

@@ -216,16 +216,17 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Builder(
                     builder: (context) {
+                      final isBusInactive = !bus.isActive;
                       print('DEBUG: Rendering buttons - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating, _isLoading: $_isLoading');
                       return Row(
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: _isTappedIn || _isUpdating || _isLoading
+                              onPressed: _isTappedIn || _isUpdating || _isLoading || isBusInactive
                                   ? null
                                   : () => _handleTapIn(bus),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
+                                backgroundColor: isBusInactive ? Colors.grey : Colors.green,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
@@ -251,11 +252,11 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                           const SizedBox(width: 16),
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: !_isTappedIn || _isUpdating || _isLoading
+                              onPressed: !_isTappedIn || _isUpdating || _isLoading || isBusInactive
                                   ? null
                                   : () => _handleTapOut(bus),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
+                            backgroundColor: isBusInactive ? Colors.grey : Colors.red,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
@@ -283,6 +284,18 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                     },
                   ),
                 ),
+
+                if (!bus.isActive)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                    child: Text(
+                      'This bus is inactive. Boarding is disabled.',
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
 
                 const SizedBox(height: 32),
 

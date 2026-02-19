@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
+import '../../models/report_model.dart';
+import '../../services/firestore_service.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -11,6 +13,8 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
+
   @override
   void initState() {
     super.initState();
@@ -91,94 +95,112 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         final totalBuses = busProvider.buses.length;
         final activeBuses = busProvider.buses.where((b) => b.isActive).length;
         final totalRoutes = routeProvider.routes.length;
-        final totalStops = routeProvider.busStops.length;
 
-        return GridView.count(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            _buildStatCard(
-              icon: Icons.directions_bus,
-              title: 'Total Buses',
-              value: totalBuses.toString(),
-              subtitle: '$activeBuses active',
-              color: Colors.blue,
-            ),
-            _buildStatCard(
-              icon: Icons.route,
-              title: 'Routes',
-              value: totalRoutes.toString(),
-              subtitle: 'Active routes',
-              color: Colors.green,
-            ),
-            _buildStatCard(
-              icon: Icons.location_on,
-              title: 'Bus Stops',
-              value: totalStops.toString(),
-              subtitle: 'Registered stops',
-              color: Colors.orange,
-            ),
-            _buildStatCard(
-              icon: Icons.people,
-              title: 'Active Users',
-              value: '---',
-              subtitle: 'Coming soon',
-              color: Colors.purple,
-            ),
-          ],
+        return StreamBuilder<List<Report>>(
+          stream: _firestoreService.getReportsStream(),
+          builder: (context, reportSnapshot) {
+            final reports = reportSnapshot.data ?? [];
+            final pending = reports
+                .where((r) => r.status == ReportStatus.pending)
+                .length;
+
+            return StreamBuilder<int>(
+              stream: _firestoreService.getTodayCompletedTripsCountStream(),
+              builder: (context, tripSnapshot) {
+                final passengersToday = tripSnapshot.data ?? 0;
+
+                return Card(
+                  elevation: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Expanded(
+                          child: _buildCompactOverviewStat(
+                            icon: Icons.directions_bus,
+                            value: '$activeBuses/$totalBuses',
+                            label: 'Buses\nActive/Total',
+                            color: Colors.blue,
+                          ),
+                        ),
+                        _buildVerticalDivider(),
+                        Expanded(
+                          child: _buildCompactOverviewStat(
+                            icon: Icons.route,
+                            value: totalRoutes.toString(),
+                            label: 'Routes',
+                            color: Colors.green,
+                          ),
+                        ),
+                        _buildVerticalDivider(),
+                        Expanded(
+                          child: _buildCompactOverviewStat(
+                            icon: Icons.people,
+                            value: passengersToday.toString(),
+                            label: 'Passengers\nToday',
+                            color: Colors.orange,
+                          ),
+                        ),
+                        _buildVerticalDivider(),
+                        Expanded(
+                          child: _buildCompactOverviewStat(
+                            icon: Icons.report_problem,
+                            value: pending.toString(),
+                            label: 'Pending\nReports',
+                            color: pending > 0 ? Colors.red : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildStatCard({
+  Widget _buildCompactOverviewStat({
     required IconData icon,
-    required String title,
     required String value,
-    required String subtitle,
+    required String label,
     required Color color,
   }) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 36, color: color),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[700],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerticalDivider() {
+    return Container(
+      height: 60,
+      width: 1,
+      color: Colors.grey.shade300,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
     );
   }
 
@@ -336,41 +358,47 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Widget _buildReportsSummary() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildReportRow(
-              'Pending',
-              '---',
-              Colors.orange,
-              Icons.pending,
+    return StreamBuilder<List<Report>>(
+      stream: _firestoreService.getReportsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
             ),
-            const Divider(height: 24),
-            _buildReportRow(
-              'In Progress',
-              '---',
-              Colors.blue,
-              Icons.sync,
+          );
+        }
+        final reports = snapshot.data ?? [];
+        final pending =
+            reports.where((r) => r.status == ReportStatus.pending).length;
+        final reviewed =
+            reports.where((r) => r.status == ReportStatus.reviewed).length;
+        final resolved =
+            reports.where((r) => r.status == ReportStatus.resolved).length;
+        final total = reports.length;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _buildReportRow('Pending', pending.toString(),
+                    Colors.orange, Icons.pending),
+                const Divider(height: 24),
+                _buildReportRow('In Review', reviewed.toString(),
+                    Colors.blue, Icons.sync),
+                const Divider(height: 24),
+                _buildReportRow('Resolved', resolved.toString(),
+                    Colors.green, Icons.check_circle),
+                const Divider(height: 24),
+                _buildReportRow(
+                    'Total Reports', total.toString(), Colors.grey, Icons.report),
+              ],
             ),
-            const Divider(height: 24),
-            _buildReportRow(
-              'Resolved',
-              '---',
-              Colors.green,
-              Icons.check_circle,
-            ),
-            const Divider(height: 24),
-            _buildReportRow(
-              'Total Reports',
-              '---',
-              Colors.grey,
-              Icons.report,
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

@@ -17,6 +17,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _passwordController;
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _isAwaitingRoleRouting = false;
   bool _isLoginExpanded = false;
   bool _serviceAlerts = true;
   bool _busUpdates = true;
@@ -28,15 +29,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _passwordController = TextEditingController();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthProvider>().addListener(_onAuthProviderChanged);
       context.read<AnnouncementProvider>().fetchAnnouncements();
     });
   }
 
   @override
   void dispose() {
+    context.read<AuthProvider>().removeListener(_onAuthProviderChanged);
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _onAuthProviderChanged() {
+    if (!_isAwaitingRoleRouting || !mounted) return;
+
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.currentUser;
+    if (user == null) return;
+
+    _isAwaitingRoleRouting = false;
+    final userRole = user.role;
+
+    if (userRole == UserRole.driver) {
+      Navigator.of(context).pushNamedAndRemoveUntil('/driver', (route) => false);
+    } else if (userRole == UserRole.admin) {
+      Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false);
+    } else {
+      _showMessage('Access denied - Staff accounts only');
+      authProvider.signOut();
+    }
   }
 
   void _handleLogin() async {
@@ -56,33 +79,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _isLoading = false);
 
     if (success) {
-      // Wait for user data to load
-      if (mounted) {
-        int attempts = 0;
-        while (authProvider.currentUser == null && attempts < 50) {
-          await Future.delayed(const Duration(milliseconds: 100));
-          attempts++;
-        }
-
-        if (mounted && authProvider.currentUser != null) {
-          final userRole = authProvider.currentUser?.role;
-          
-          // Check if user is admin or driver
-          if (userRole == UserRole.driver) {
-            Navigator.of(context).pushReplacementNamed('/driver');
-          } else if (userRole == UserRole.admin) {
-            Navigator.of(context).pushReplacementNamed('/admin');
-          } else {
-            // User is not staff (admin/driver)
-            _showMessage('Access denied - Staff accounts only');
-            await authProvider.signOut();
-          }
-        } else {
-          _showMessage('Failed to load user data');
-        }
-      }
+      _isAwaitingRoleRouting = true;
+      _onAuthProviderChanged();
     } else {
-      _showMessage(authProvider.error ?? 'Login failed');
+      _showMessage('The information entered is incorrect');
     }
   }
 
@@ -266,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Account Details',
+                        'Details',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 16),

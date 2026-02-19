@@ -434,36 +434,27 @@ class _NotificationsManagementScreenState
               // Capture context-dependent objects before async gap
               final navigator = Navigator.of(context);
               final scaffoldMessenger = ScaffoldMessenger.of(context);
-              // final announcementProvider = context.read<AnnouncementProvider>();
+              final announcementProvider = context.read<AnnouncementProvider>();
 
-              // TODO: Implement deleteAnnouncement method in FirestoreService
-              // final error = await _firestoreService
-              //     .deleteAnnouncement(announcement.announcementId);
+              final error = await _firestoreService
+                  .deleteAnnouncement(announcement.announcementId);
 
               if (!mounted) return;
               navigator.pop();
 
-              // Temporary: Show feature not implemented
-              scaffoldMessenger.showSnackBar(
-                const SnackBar(
-                  content: Text('Delete feature coming soon'),
-                ),
-              );
-
-              // Uncomment when deleteAnnouncement is implemented:
-              // if (error == null) {
-              //   scaffoldMessenger.showSnackBar(
-              //     const SnackBar(
-              //       content: Text('Notification deleted successfully'),
-              //       backgroundColor: Colors.green,
-              //     ),
-              //   );
-              //   announcementProvider.fetchAnnouncements();
-              // } else {
-              //   scaffoldMessenger.showSnackBar(
-              //     SnackBar(content: Text('Error: $error')),
-              //   );
-              // }
+              if (error == null) {
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Notification deleted successfully'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                announcementProvider.fetchAnnouncements();
+              } else {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(content: Text('Error: $error')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),

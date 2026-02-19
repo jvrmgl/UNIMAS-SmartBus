@@ -1,10 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../models/user_model.dart';
+import '../firebase_options.dart';
 
 class AuthService {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'asia-southeast1');
 
   // Get current user
   firebase_auth.User? get currentUser => _auth.currentUser;
@@ -121,6 +126,115 @@ class AuthService {
       return doc.exists;
     } catch (e) {
       return false;
+    }
+  }
+
+  // Admin: create a user account without affecting the currently signed-in admin session
+  Future<String?> createUserAsAdmin({
+    required String email,
+    required String password,
+    required String fullName,
+    required String phoneNumber,
+    required UserRole role,
+  }) async {
+    FirebaseApp? secondaryApp;
+    firebase_auth.FirebaseAuth? secondaryAuth;
+
+    try {
+      final appName = 'adminCreate_${DateTime.now().microsecondsSinceEpoch}';
+      secondaryApp = await Firebase.initializeApp(
+        name: appName,
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      secondaryAuth = firebase_auth.FirebaseAuth.instanceFor(app: secondaryApp);
+
+      final credential = await secondaryAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final uid = credential.user?.uid;
+      if (uid == null) {
+        return 'Failed to create user account';
+      }
+
+      final userModel = User(
+        uid: uid,
+        email: email,
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        role: role,
+        createdAt: DateTime.now(),
+      );
+
+      await _firestore.collection('users').doc(uid).set(userModel.toMap());
+      return null;
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      return e.message ?? 'An error occurred while creating the account';
+    } catch (e) {
+      return 'Error: ${e.toString()}';
+    } finally {
+      try {
+        await secondaryAuth?.signOut();
+      } catch (_) {}
+      try {
+        await secondaryApp?.delete();
+      } catch (_) {}
+    }
+  }
+
+  // Delete a Firebase Auth account by re-authenticating with user credentials
+  Future<String?> deleteUserAccountWithReauth({
+    required String email,
+    required String password,
+  }) async {
+    FirebaseApp? secondaryApp;
+    firebase_auth.FirebaseAuth? secondaryAuth;
+
+    try {
+      final appName = 'adminDelete_${DateTime.now().microsecondsSinceEpoch}';
+      secondaryApp = await Firebase.initializeApp(
+        name: appName,
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      secondaryAuth = firebase_auth.FirebaseAuth.instanceFor(app: secondaryApp);
+
+      final credential = await secondaryAuth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final user = credential.user;
+      if (user == null) {
+        return 'Unable to verify account credentials';
+      }
+
+      await user.delete();
+      return null;
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      return e.message ?? 'Unable to delete account';
+    } catch (e) {
+      return 'Error: ${e.toString()}';
+    } finally {
+      try {
+        await secondaryAuth?.signOut();
+      } catch (_) {}
+      try {
+        await secondaryApp?.delete();
+      } catch (_) {}
+    }
+  }
+
+  // Admin: delete a Firebase Auth account by UID via callable Cloud Function
+  Future<String?> deleteUserAuthByUidAsAdmin(String uid) async {
+    try {
+      final callable = _functions.httpsCallable('deleteAuthUserByUid');
+      await callable.call({'uid': uid});
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      return e.message ?? 'Unable to delete auth account';
+    } catch (e) {
+      return 'Error: ${e.toString()}';
     }
   }
 }

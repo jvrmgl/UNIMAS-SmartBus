@@ -91,6 +91,126 @@ class FirestoreService {
     }
   }
 
+  // Update bus
+  Future<String?> updateBus(Bus bus) async {
+    try {
+      await _firestore.collection('buses').doc(bus.busId).update(bus.toMap());
+      return null;
+    } catch (e) {
+      return 'Error updating bus: $e';
+    }
+  }
+
+  // Delete bus
+  Future<String?> deleteBus(String busId) async {
+    try {
+      await _firestore.collection('buses').doc(busId).delete();
+      return null;
+    } catch (e) {
+      return 'Error deleting bus: $e';
+    }
+  }
+
+  // Update active status for a bus
+  Future<String?> setBusActiveStatus({
+    required String busId,
+    required bool isActive,
+  }) async {
+    try {
+      await _firestore.collection('buses').doc(busId).update({
+        'isActive': isActive,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+      return null;
+    } catch (e) {
+      return 'Error updating bus status: $e';
+    }
+  }
+
+  // Assign driver to bus
+  Future<String?> assignDriverToBus({
+    required String busId,
+    required String driverId,
+    required String driverName,
+  }) async {
+    try {
+      await _firestore.collection('buses').doc(busId).update({
+        'driverId': driverId,
+        'driverName': driverName,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+      return null;
+    } catch (e) {
+      return 'Error assigning driver: $e';
+    }
+  }
+
+  // Remove driver from bus
+  Future<String?> removeDriverFromBus(String busId) async {
+    try {
+      await _firestore.collection('buses').doc(busId).update({
+        'driverId': null,
+        'driverName': null,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+      return null;
+    } catch (e) {
+      return 'Error removing driver: $e';
+    }
+  }
+
+  // Assign route to bus
+  Future<String?> assignRouteToBus({
+    required String busId,
+    required String routeId,
+  }) async {
+    try {
+      await _firestore.collection('buses').doc(busId).update({
+        'assignedRoute': routeId,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+      return null;
+    } catch (e) {
+      return 'Error assigning route: $e';
+    }
+  }
+
+  // Remove route assignment from bus
+  Future<String?> removeRouteFromBus(String busId) async {
+    try {
+      await _firestore.collection('buses').doc(busId).update({
+        'assignedRoute': null,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+      return null;
+    } catch (e) {
+      return 'Error removing route assignment: $e';
+    }
+  }
+
+  // Remove a driver assignment from all buses
+  Future<String?> unassignDriverFromAllBuses(String driverId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('buses')
+          .where('driverId', isEqualTo: driverId)
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.update(doc.reference, {
+          'driverId': null,
+          'driverName': null,
+          'lastUpdated': DateTime.now().toIso8601String(),
+        });
+      }
+      await batch.commit();
+      return null;
+    } catch (e) {
+      return 'Error unassigning driver from buses: $e';
+    }
+  }
+
   // ============ ROUTE OPERATIONS ============
 
   // Get all routes
@@ -149,6 +269,45 @@ class FirestoreService {
     }
   }
 
+  // Update route stops
+  Future<String?> updateRouteStops({
+    required String routeId,
+    required List<String> stopIds,
+  }) async {
+    try {
+      await _firestore.collection('routes').doc(routeId).update({
+        'stopIds': stopIds,
+      });
+      return null;
+    } catch (e) {
+      return 'Error updating route stops: $e';
+    }
+  }
+
+  // Delete route and unassign from buses
+  Future<String?> deleteRoute(String routeId) async {
+    try {
+      final busesSnapshot = await _firestore
+          .collection('buses')
+          .where('assignedRoute', isEqualTo: routeId)
+          .get();
+
+      final batch = _firestore.batch();
+      for (final busDoc in busesSnapshot.docs) {
+        batch.update(busDoc.reference, {
+          'assignedRoute': null,
+          'lastUpdated': DateTime.now().toIso8601String(),
+        });
+      }
+
+      batch.delete(_firestore.collection('routes').doc(routeId));
+      await batch.commit();
+      return null;
+    } catch (e) {
+      return 'Error deleting route: $e';
+    }
+  }
+
   // ============ BUS STOP OPERATIONS ============
 
   // Get all bus stops
@@ -185,6 +344,39 @@ class FirestoreService {
       return null;
     } catch (e) {
       return 'Error adding bus stop: $e';
+    }
+  }
+
+  // Update bus stop
+  Future<String?> updateBusStop(BusStop stop) async {
+    try {
+      await _firestore.collection('bus_stops').doc(stop.stopId).update(stop.toMap());
+      return null;
+    } catch (e) {
+      return 'Error updating bus stop: $e';
+    }
+  }
+
+  // Delete bus stop and remove it from all routes
+  Future<String?> deleteBusStop(String stopId) async {
+    try {
+      final routesSnapshot = await _firestore.collection('routes').get();
+      final batch = _firestore.batch();
+
+      for (final routeDoc in routesSnapshot.docs) {
+        final data = routeDoc.data();
+        final stopIds = List<String>.from(data['stopIds'] as List? ?? []);
+        if (stopIds.contains(stopId)) {
+          stopIds.removeWhere((id) => id == stopId);
+          batch.update(routeDoc.reference, {'stopIds': stopIds});
+        }
+      }
+
+      batch.delete(_firestore.collection('bus_stops').doc(stopId));
+      await batch.commit();
+      return null;
+    } catch (e) {
+      return 'Error deleting bus stop: $e';
     }
   }
 
@@ -431,6 +623,16 @@ class FirestoreService {
     });
   }
 
+  // Delete announcement
+  Future<String?> deleteAnnouncement(String announcementId) async {
+    try {
+      await _firestore.collection('announcements').doc(announcementId).delete();
+      return null; // Success
+    } catch (e) {
+      return 'Error deleting announcement: $e';
+    }
+  }
+
   // Get user data from Firestore
   Future<User?> getUserData(String uid) async {
     try {
@@ -442,6 +644,20 @@ class FirestoreService {
     } catch (e) {
       print('Error getting user data: $e');
       return null;
+    }
+  }
+
+  // Get all users with a given role
+  Future<List<User>> getUsersByRole(UserRole role) async {
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .where('role', isEqualTo: role.toString().split('.').last)
+          .get();
+      return snapshot.docs.map((doc) => User.fromMap(doc.data())).toList();
+    } catch (e) {
+      print('Error getting users by role: $e');
+      return [];
     }
   }
 
@@ -467,6 +683,51 @@ class FirestoreService {
       return null;
     } catch (e) {
       return 'Error updating user role: $e';
+    }
+  }
+
+  // Update user profile information
+  Future<String?> updateUserProfile({
+    required String uid,
+    required String fullName,
+    required String email,
+    String? phoneNumber,
+  }) async {
+    try {
+      final updateData = {
+        'fullName': fullName,
+        'email': email,
+        'phoneNumber': phoneNumber ?? '',
+      };
+      await _firestore.collection('users').doc(uid).update(updateData);
+      return null;
+    } catch (e) {
+      return 'Error updating user profile: $e';
+    }
+  }
+
+  // Delete user profile document and clear bus assignments if driver
+  Future<String?> deleteUserProfile(String uid) async {
+    try {
+      final busesSnapshot = await _firestore
+          .collection('buses')
+          .where('driverId', isEqualTo: uid)
+          .get();
+
+      final batch = _firestore.batch();
+      for (final busDoc in busesSnapshot.docs) {
+        batch.update(busDoc.reference, {
+          'driverId': null,
+          'driverName': null,
+          'lastUpdated': DateTime.now().toIso8601String(),
+        });
+      }
+
+      batch.delete(_firestore.collection('users').doc(uid));
+      await batch.commit();
+      return null;
+    } catch (e) {
+      return 'Error deleting user profile: $e';
     }
   }
 
@@ -795,6 +1056,21 @@ class FirestoreService {
       print('❌ Error getting trip: $e');
       return null;
     }
+  }
+
+  // Get count of completed trips today
+  Stream<int> getTodayCompletedTripsCountStream() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    return _firestore
+        .collection('student_trips')
+        .where('status', isEqualTo: 'completed')
+        .where('offBoardedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('offBoardedAt', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
   }
 }
 
