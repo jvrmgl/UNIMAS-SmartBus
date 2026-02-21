@@ -44,15 +44,24 @@ class LocationService {
 
   // Stream position updates
   static Stream<Position> getPositionStream({
-    int distanceFilter = 0, // Update every 0 meters
-    int intervalInSeconds = 5, // Update every 5 seconds
+    int distanceFilter = 10, // Update every 10 meters
+    int intervalInSeconds = 10, // Update every 10 seconds
   }) {
-    return Geolocator.getPositionStream(
-      locationSettings: LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: distanceFilter,
-        timeLimit: Duration(seconds: intervalInSeconds),
+    // Use AndroidSettings for better compatibility
+    final androidSettings = AndroidSettings(
+      accuracy: LocationAccuracy.high, // Good balance of accuracy and battery
+      distanceFilter: 10,
+      forceLocationManager: false, // Use FusedLocationProvider (better)
+      intervalDuration: const Duration(seconds: 10),
+      foregroundNotificationConfig: const ForegroundNotificationConfig(
+        notificationText: 'SmartBus is tracking your location for real-time bus updates',
+        notificationTitle: 'Location Tracking Active',
+        enableWakeLock: true,
       ),
+    );
+
+    return Geolocator.getPositionStream(
+      locationSettings: androidSettings,
     );
   }
 

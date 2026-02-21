@@ -11,6 +11,7 @@ import 'providers/route_provider.dart';
 import 'providers/location_provider.dart';
 import 'providers/announcement_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/driver_shift_provider.dart';
 import 'services/device_service.dart';
 import 'services/local_storage_service.dart';
 import 'screens/auth/splash_screen.dart';
@@ -53,6 +54,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => AnnouncementProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => DriverShiftProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {

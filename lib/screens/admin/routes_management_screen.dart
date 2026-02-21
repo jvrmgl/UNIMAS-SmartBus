@@ -135,26 +135,55 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 child: Column(
                   children: [
-                    ExpansionTile(
+                    ListTile(
                       leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
+                        padding: const EdgeInsets.all(10),
+                        decoration: const BoxDecoration(
                           color: Colors.blue,
-                          borderRadius: BorderRadius.circular(8),
+                          shape: BoxShape.circle,
                         ),
-                        child: Text(
-                          route.routeCode,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                        child: const Icon(
+                          Icons.route,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      title: Row(
+                        children: [
+                          Text(
+                            route.routeName,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.blue, width: 0.8),
+                            ),
+                            child: Text(
+                              route.routeCode,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Text('${route.stopIds.length} stops'),
+                          ],
                         ),
                       ),
-                      title: Text(
-                        route.routeName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text('${route.stopIds.length} stops'),
                       trailing: PopupMenuButton(
                         itemBuilder: (context) => [
                           const PopupMenuItem(
@@ -186,41 +215,60 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                           }
                         },
                       ),
-                      children: [
-                        if (stops.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              'No stops assigned to this route',
-                              style: TextStyle(color: Colors.grey[600]),
-                            ),
-                          )
-                        else
-                          ...stops.asMap().entries.map((entry) {
-                            final stopIndex = entry.key;
-                            final stop = entry.value;
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Colors.blue,
-                                radius: 16,
-                                child: Text(
-                                  '${stopIndex + 1}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                  ),
+                    ),
+                    if (stops.isNotEmpty)
+                      ExpansionTile(
+                        title: const Text(
+                          'View Stops',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                        initiallyExpanded: false,
+                        children: stops.asMap().entries.map((entry) {
+                          final stopIndex = entry.key;
+                          final stop = entry.value;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.blue.withValues(alpha: 0.2),
+                              radius: 16,
+                              child: Text(
+                                '${stopIndex + 1}',
+                                style: const TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              title: Text(stop.stopName),
-                              subtitle: Text(stop.stopCode),
-                              dense: true,
-                            );
-                          }),
-                      ],
-                    ),
+                            ),
+                            title: Text(stop.stopName),
+                            subtitle: Text(stop.stopCode),
+                            trailing: SizedBox(
+                              width: 96,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 20),
+                                    tooltip: 'Edit stop',
+                                    onPressed: () =>
+                                        _showEditBusStopDialog(stop),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete,
+                                        size: 20, color: Colors.red),
+                                    tooltip: 'Delete stop',
+                                    onPressed: () =>
+                                        _confirmDeleteBusStop(stop),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            dense: true,
+                          );
+                        }).toList(),
+                      ),
                     // Action buttons row
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                       child: Row(
                         children: [
                           Expanded(
@@ -645,7 +693,34 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                   return ListTile(
                     leading: const Icon(Icons.location_on),
                     title: Text(stop.stopName),
-                    subtitle: Text(stop.stopCode),
+                    subtitle: Text(
+                      '${stop.stopCode} • ${stop.latitude.toStringAsFixed(5)}, ${stop.longitude.toStringAsFixed(5)}',
+                    ),
+                    trailing: SizedBox(
+                      width: 96,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            tooltip: 'Edit stop',
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                              _showEditBusStopDialog(stop);
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete,
+                                size: 20, color: Colors.red),
+                            tooltip: 'Delete stop',
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                              _confirmDeleteBusStop(stop);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),
@@ -663,6 +738,165 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
               _showAddBusStopDialog(scaffoldContext);
             },
             child: const Text('Add Stop'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditBusStopDialog(BusStop stop) {
+    final scaffoldContext = context;
+    final formKey = GlobalKey<FormState>();
+    final stopNameController = TextEditingController(text: stop.stopName);
+    final stopCodeController = TextEditingController(text: stop.stopCode);
+    final descriptionController = TextEditingController(text: stop.description);
+    LatLng selectedLatLng = LatLng(stop.latitude, stop.longitude);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Edit Bus Stop'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 220,
+                    width: double.maxFinite,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: GoogleMap(
+                        initialCameraPosition: CameraPosition(
+                          target: selectedLatLng,
+                          zoom: 15,
+                        ),
+                        onTap: (latLng) {
+                          setDialogState(() => selectedLatLng = latLng);
+                        },
+                        markers: {
+                          Marker(
+                            markerId: const MarkerId('edit_bus_stop_pin'),
+                            position: selectedLatLng,
+                          ),
+                        },
+                        myLocationEnabled: true,
+                        myLocationButtonEnabled: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tap to reposition: ${selectedLatLng.latitude.toStringAsFixed(6)}, ${selectedLatLng.longitude.toStringAsFixed(6)}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: stopNameController,
+                    decoration: const InputDecoration(labelText: 'Stop Name'),
+                    validator: (value) =>
+                        value?.trim().isEmpty ?? true ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: stopCodeController,
+                    decoration: const InputDecoration(labelText: 'Stop Code'),
+                    validator: (value) =>
+                        value?.trim().isEmpty ?? true ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: descriptionController,
+                    decoration: const InputDecoration(labelText: 'Description'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+
+                final updatedStop = stop.copyWith(
+                  stopName: stopNameController.text.trim(),
+                  stopCode: stopCodeController.text.trim(),
+                  latitude: selectedLatLng.latitude,
+                  longitude: selectedLatLng.longitude,
+                  description: descriptionController.text.trim(),
+                );
+
+                final error = await _firestoreService.updateBusStop(updatedStop);
+                if (!dialogContext.mounted) return;
+                Navigator.pop(dialogContext);
+                if (!mounted) return;
+
+                ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        error == null ? 'Bus stop updated successfully' : 'Error: $error'),
+                    backgroundColor: error == null ? Colors.green : Colors.red,
+                  ),
+                );
+
+                if (error == null) {
+                  context.read<RouteProvider>().fetchBusStops();
+                  context.read<RouteProvider>().fetchRoutes();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteBusStop(BusStop stop) {
+    final scaffoldContext = context;
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Bus Stop'),
+        content: Text(
+          'Delete ${stop.stopName}? This will also remove it from all routes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final error = await _firestoreService.deleteBusStop(stop.stopId);
+              if (!dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    error == null
+                        ? 'Bus stop deleted successfully'
+                        : 'Error: $error',
+                  ),
+                  backgroundColor: error == null ? Colors.green : Colors.red,
+                ),
+              );
+
+              if (error == null) {
+                context.read<RouteProvider>().fetchBusStops();
+                context.read<RouteProvider>().fetchRoutes();
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
           ),
         ],
       ),

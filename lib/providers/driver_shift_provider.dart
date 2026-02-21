@@ -1,0 +1,230 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/bus_model.dart';
+import '../services/driver_tracking_service.dart';
+import '../services/firestore_service.dart';
+
+/// Manages driver shift state and location tracking
+class DriverShiftProvider extends ChangeNotifier {
+  final FirestoreService _firestoreService = FirestoreService();
+  final DriverTrackingService _trackingService = DriverTrackingService();
+
+  Bus? _assignedBus;
+  bool _isOnShift = false;
+  String? _error;
+  String? _driverUid;
+
+  Bus? get assignedBus => _assignedBus;
+  bool get isOnShift => _isOnShift;
+  bool get isTracking => _trackingService.isTracking;
+  String? get error => _error;
+  bool get hasAssignedBus => _assignedBus != null;
+
+  /// Initialize driver with their UID
+  void setDriverUid(String uid) {
+    _driverUid = uid;
+    _checkAssignedBus();
+  }
+
+  /// Check if admin has already assigned a bus to this driver
+  Future<void> _checkAssignedBus() async {
+    if (_driverUid == null) return;
+
+    try {
+      final buses = await _firestoreService.getBuses();
+      final assigned = buses.where((bus) => bus.driverId == _driverUid).firstOrNull;
+      
+      if (assigned != null) {
+        _assignedBus = assigned;
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = 'Failed to check assigned bus: $e';
+      notifyListeners();
+    }
+  }
+
+  /// Driver manually selects a bus (if not already assigned by admin)
+  Future<bool> selectBus(Bus bus, String driverName) async {
+    if (_driverUid == null) return false;
+
+    try {
+      // Check if bus is already taken by another driver
+      final buses = await _firestoreService.getBuses();
+      final existing = buses.where((b) => b.busId == bus.busId).firstOrNull;
+      
+      if (existing?.driverId != null && existing?.driverId != _driverUid) {
+        _error = 'Bus is already assigned to another driver';
+        notifyListeners();
+        return false;
+      }
+
+      // Update bus with driver assignment
+      await FirebaseFirestore.instance.collection('buses').doc(bus.busId).update({
+        'driverId': _driverUid,
+        'driverName': driverName,
+      });
+
+      _assignedBus = bus.copyWith(
+        driverId: _driverUid,
+        driverName: driverName,
+      );
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = 'Failed to select bus: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Release current bus assignment
+  Future<void> releaseBus() async {
+    if (_assignedBus == null) return;
+
+    if (_isOnShift) {
+      await endShift();
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('buses')
+          .doc(_assignedBus!.busId)
+          .update({
+        'driverId': null,
+        'driverName': null,
+        'isActive': false,
+      });
+
+      _assignedBus = null;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to release bus: $e';
+      notifyListeners();
+    }
+  }
+
+  /// Start shift - activates GPS tracking
+  Future<bool> startShift() async {
+    if (_assignedBus == null) {
+      _error = 'No bus assigned';
+      notifyListeners();
+      return false;
+    }
+
+    if (_isOnShift) {
+      return true; // Already on shift
+    }
+
+    try {
+      // Set bus as active
+      await FirebaseFirestore.instance
+          .collection('buses')
+          .doc(_assignedBus!.busId)
+          .update({
+        'isActive': true,
+      });
+
+      // Store error messages from tracking service
+      String? trackingError;
+
+      // Start GPS tracking
+      await _trackingService.startTracking(
+        busId: _assignedBus!.busId,
+        updateIntervalSeconds: 10,
+        onError: (error) {
+          trackingError = error;
+          _error = error;
+          notifyListeners();
+        },
+      );
+
+      // Check if tracking started successfully
+      if (trackingError != null) {
+        // Revert bus to inactive if tracking failed
+        await FirebaseFirestore.instance
+            .collection('buses')
+            .doc(_assignedBus!.busId)
+            .update({'isActive': false});
+        return false;
+      }
+
+      _isOnShift = true;
+      _error = null;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = 'Failed to start shift: $e';
+      // Ensure bus is inactive if shift start failed
+      try {
+        await FirebaseFirestore.instance
+            .collection('buses')
+            .doc(_assignedBus!.busId)
+            .update({'isActive': false});
+      } catch (_) {}
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// End shift - stops GPS tracking
+  Future<void> endShift() async {
+    if (!_isOnShift || _assignedBus == null) return;
+
+    try {
+      // Stop GPS tracking first
+      _trackingService.stopTracking();
+      
+      // Give time for cleanup
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Set bus as inactive
+      await FirebaseFirestore.instance
+          .collection('buses')
+          .doc(_assignedBus!.busId)
+          .update({
+        'isActive': false,
+      });
+
+      _isOnShift = false;
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to end shift: $e';
+      // Even if Firebase update fails, mark shift as ended locally
+      _isOnShift = false;
+      notifyListeners();
+    }
+  }
+
+  /// Refresh assigned bus data
+  Future<void> refreshBusData() async {
+    if (_assignedBus == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('buses')
+          .doc(_assignedBus!.busId)
+          .get();
+
+      if (doc.exists) {
+        _assignedBus = Bus.fromMap(doc.data()!);
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = 'Failed to refresh bus data: $e';
+      notifyListeners();
+    }
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _trackingService.dispose();
+    super.dispose();
+  }
+}

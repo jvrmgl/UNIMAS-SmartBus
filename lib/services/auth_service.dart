@@ -119,6 +119,35 @@ class AuthService {
     }
   }
 
+  // Update password
+  Future<String?> updatePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'No user signed in';
+
+      // Re-authenticate user with current password
+      final credential = firebase_auth.EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+
+      // Update to new password
+      await user.updatePassword(newPassword);
+      return null; // Success
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password') {
+        return 'Current password is incorrect';
+      }
+      return e.message ?? 'An error occurred';
+    } catch (e) {
+      return 'Error: ${e.toString()}';
+    }
+  }
+
   // Check if user exists
   Future<bool> userExists(String uid) async {
     try {

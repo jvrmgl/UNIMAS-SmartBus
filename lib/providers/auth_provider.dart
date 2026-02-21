@@ -192,4 +192,22 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
   }
+
+  Future<bool> updatePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final result = await _authService.updatePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    
+    if (result == null) {
+      return true;
+    } else {
+      _error = result;
+      notifyListeners();
+      return false;
+    }
+  }
 }

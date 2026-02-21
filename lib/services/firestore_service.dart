@@ -81,6 +81,21 @@ class FirestoreService {
     }
   }
 
+  // Update bus occupancy only
+  Future<String?> updateBusOccupancy({
+    required String busId,
+    required int currentOccupancy,
+  }) async {
+    try {
+      await _firestore.collection('buses').doc(busId).update({
+        'currentOccupancy': currentOccupancy,
+      });
+      return null; // Success
+    } catch (e) {
+      return 'Error updating bus occupancy: $e';
+    }
+  }
+
   // Add new bus
   Future<String?> addBus(Bus bus) async {
     try {

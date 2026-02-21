@@ -69,6 +69,27 @@ class BusProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> updateBusOccupancy({
+    required String busId,
+    required int occupancy,
+  }) async {
+    try {
+      final result = await _firestoreService.updateBusOccupancy(
+        busId: busId,
+        currentOccupancy: occupancy,
+      );
+      if (result == null) {
+        await fetchBuses(); // Refresh the bus list
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
   void selectBus(Bus bus) {
     _selectedBus = bus;
     notifyListeners();
