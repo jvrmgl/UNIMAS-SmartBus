@@ -6,8 +6,8 @@ import '../../providers/driver_shift_provider.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../constants/app_theme.dart';
+import '../../models/bus_stop_model.dart';
 import '../../widgets/slide_button.dart';
-import '../shared/route_detail_screen.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
   const DriverDashboardScreen({super.key});
@@ -17,6 +17,8 @@ class DriverDashboardScreen extends StatefulWidget {
 }
 
 class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
+  bool _isOccupancyEditorOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -46,7 +48,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         actions: [
           Consumer<AnnouncementProvider>(
             builder: (context, announcementProvider, _) {
-              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              final hasUnread =
+                  announcementProvider.hasVisibleAnnouncementsFor('driver');
               return Stack(
                 children: [
                   IconButton(
@@ -117,7 +120,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       // Error message
                       if (shiftProvider.error != null)
                         Card(
-                          color: Colors.red.shade50,
+                          color: Colors.red.withValues(alpha: 0.12),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Row(
@@ -155,7 +158,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       
                       // Route Information
                       if (shiftProvider.hasAssignedBus && shiftProvider.assignedBus!.assignedRoute != null)
-                        _buildRouteInfoCard(shiftProvider.assignedBus!.assignedRoute!),
+                        _buildRouteInfoCard(shiftProvider),
                     ],
                   ),
                 );
@@ -189,14 +192,20 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: ElevatedButton(
                 onPressed: () => _showBusSelectionDialog(),
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('Select Bus'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_circle_outline, color: Colors.white, size: 22),
+                    SizedBox(width: 8),
+                    Text('Select Bus', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                  ],
                 ),
               ),
             ),
@@ -208,6 +217,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
   Widget _buildAssignedBusCard(DriverShiftProvider shiftProvider) {
     final bus = shiftProvider.assignedBus!;
+    final isBusOnline = shiftProvider.isOnShift && bus.isActive;
+    final displayedOccupancy = isBusOnline ? bus.currentOccupancy : 0;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -280,36 +291,61 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                   children: [
                     const Icon(Icons.people, color: Colors.blue, size: 24),
                     const SizedBox(height: 4),
-                    Text(
-                      '${bus.currentOccupancy}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: shiftProvider.isOnShift
+                          ? () {
+                              setState(() {
+                                _isOccupancyEditorOpen = !_isOccupancyEditorOpen;
+                              });
+                            }
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Text(
+                          '$displayedOccupancy',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
                     if (shiftProvider.isOnShift)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            onPressed: () => _decrementOccupancy(shiftProvider),
-                            icon: const Icon(Icons.remove_circle),
-                            color: Colors.red,
-                            iconSize: 28,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          setState(() {
+                            _isOccupancyEditorOpen = !_isOccupancyEditorOpen;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(width: 12),
-                          IconButton(
-                            onPressed: () => _incrementOccupancy(shiftProvider),
-                            icon: const Icon(Icons.add_circle),
-                            color: Colors.green,
-                            iconSize: 28,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isOccupancyEditorOpen ? Icons.expand_less : Icons.tune,
+                                size: 14,
+                                color: Colors.blue,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _isOccupancyEditorOpen ? 'Close editor' : 'Tap to edit',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       )
                     else
                       Text(
@@ -323,12 +359,60 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                 ),
                 _buildBusStat(
                   'Status',
-                  bus.isActive ? 'Active' : 'Inactive',
+                  isBusOnline ? 'Active' : 'Inactive',
                   Icons.circle,
-                  color: bus.isActive ? Colors.green : Colors.grey,
+                  color: isBusOnline ? Colors.green : Colors.grey,
                 ),
               ],
             ),
+            if (shiftProvider.isOnShift && _isOccupancyEditorOpen) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.blue.withValues(alpha: 0.12)
+                      : Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: () => _decrementOccupancy(shiftProvider),
+                      icon: const Icon(Icons.remove_circle),
+                      color: Colors.red,
+                      iconSize: 30,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${bus.currentOccupancy}/${bus.capacity}',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => _incrementOccupancy(shiftProvider),
+                      icon: const Icon(Icons.add_circle),
+                      color: Colors.green,
+                      iconSize: 30,
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _isOccupancyEditorOpen = false;
+                        });
+                      },
+                      icon: const Icon(Icons.close),
+                      color: Colors.grey,
+                      tooltip: 'Close',
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -336,8 +420,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   }
 
   Widget _buildShiftControlCard(DriverShiftProvider shiftProvider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
-      color: shiftProvider.isOnShift ? Colors.green.shade50 : Colors.blue.shade50,
+      color: shiftProvider.isOnShift
+          ? (isDark ? Colors.green.withValues(alpha: 0.12) : Colors.green.shade50)
+          : (isDark ? Colors.blue.withValues(alpha: 0.12) : Colors.blue.shade50),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -357,7 +444,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: shiftProvider.isOnShift ? Colors.green.shade900 : Colors.blue.shade900,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -370,7 +457,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                   'Your location is being shared with passengers',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.green.shade700,
+                    color: Colors.green,
                   ),
                 ),
               ),
@@ -409,111 +496,242 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildRouteInfoCard(String routeId) {
+  Widget _buildRouteInfoCard(DriverShiftProvider shiftProvider) {
+    final assignedBus = shiftProvider.assignedBus;
+    final routeId = assignedBus?.assignedRoute;
+    if (routeId == null) {
+      return const SizedBox.shrink();
+    }
+
     return Consumer<RouteProvider>(
       builder: (context, routeProvider, _) {
+        if (routeProvider.routes.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
         final route = routeProvider.routes.firstWhere(
           (r) => r.routeId == routeId,
           orElse: () => routeProvider.routes.first,
         );
+
+        final stops = route.stopIds
+            .map((stopId) {
+              try {
+                return routeProvider.busStops.firstWhere(
+                  (stop) => stop.stopId == stopId,
+                );
+              } catch (_) {
+                return null;
+              }
+            })
+            .where((stop) => stop != null)
+            .cast<BusStop>()
+            .toList();
+
+        int? currentStopIndex;
+        if (assignedBus != null && stops.isNotEmpty) {
+          double minDistance = double.infinity;
+          for (int i = 0; i < stops.length; i++) {
+            final distance = _calculateDistance(
+              assignedBus.latitude,
+              assignedBus.longitude,
+              stops[i].latitude,
+              stops[i].longitude,
+            );
+            if (distance < minDistance) {
+              minDistance = distance;
+              currentStopIndex = i;
+            }
+          }
+        }
         
         return Card(
-          child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => RouteDetailScreen(route: route),
-                ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(Icons.route, color: AppTheme.primaryColor),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'My Route',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            Text(
-                              route.routeName,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right, color: Colors.grey),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Icon(Icons.place, size: 16, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${route.stopIds.length} stops',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                      const SizedBox(width: 16),
-                      Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Est. ${route.stopIds.length * 3} min',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'Tap to view route details',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: ExpansionTile(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
+            collapsedShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.route, color: AppTheme.primaryColor),
+            ),
+            title: const Text(
+              'My Route',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text('${route.routeName} • ${stops.length} stops'),
+            children: [
+              if (stops.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'No stop data available',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  child: Column(
+                    children: stops.asMap().entries.map((entry) {
+                      final stopIndex = entry.key;
+                      final stop = entry.value;
+                      return _buildRouteStopItem(
+                        stop: stop,
+                        isFirst: stopIndex == 0,
+                        isLast: stopIndex == stops.length - 1,
+                        isCurrent: stopIndex == currentStopIndex,
+                      );
+                    }).toList(),
+                  ),
+                ),
+            ],
           ),
         );
       },
     );
+  }
+
+  Widget _buildRouteStopItem({
+    required BusStop stop,
+    required bool isFirst,
+    required bool isLast,
+    required bool isCurrent,
+  }) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              if (!isFirst)
+                Container(
+                  width: 2,
+                  height: 16,
+                  color: isCurrent ? Colors.green : Theme.of(context).dividerColor,
+                ),
+              Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isCurrent ? Colors.green : Theme.of(context).colorScheme.surface,
+                  border: Border.all(
+                    color: isCurrent ? Colors.green : Theme.of(context).colorScheme.outline,
+                    width: 3,
+                  ),
+                ),
+                child: isCurrent
+                    ? const Icon(Icons.directions_bus, size: 10, color: Colors.white)
+                    : null,
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color: Theme.of(context).dividerColor,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isCurrent
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? Colors.green.withValues(alpha: 0.12)
+                          : Colors.green.shade50)
+                      : (Theme.of(context).brightness == Brightness.dark
+                          ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)
+                          : Colors.grey.shade50),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isCurrent ? Colors.green : Theme.of(context).dividerColor,
+                    width: isCurrent ? 2 : 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            stop.stopName,
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isCurrent ? Colors.green : Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          stop.stopCode,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isCurrent ? Colors.green : Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (stop.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        stop.description,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    if (isCurrent) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Bus is near this stop',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    final latDiff = lat1 - lat2;
+    final lonDiff = lon1 - lon2;
+    return (latDiff * latDiff + lonDiff * lonDiff);
   }
 
   void _incrementOccupancy(DriverShiftProvider shiftProvider) async {
@@ -693,6 +911,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   Future<void> _endShift(DriverShiftProvider shiftProvider) async {
     await shiftProvider.endShift();
     if (mounted) {
+      setState(() {
+        _isOccupancyEditorOpen = false;
+      });
+    }
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Shift ended - GPS tracking stopped'),
@@ -712,11 +935,13 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             width: double.maxFinite,
             child: Consumer<AnnouncementProvider>(
               builder: (context, announcementProvider, _) {
+                final visibleAnnouncements =
+                    announcementProvider.visibleAnnouncementsFor('driver');
                 if (announcementProvider.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                if (announcementProvider.announcements.isEmpty) {
+                if (visibleAnnouncements.isEmpty) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
@@ -727,9 +952,9 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: announcementProvider.announcements.length,
+                  itemCount: visibleAnnouncements.length,
                   itemBuilder: (context, index) {
-                    final announcement = announcementProvider.announcements[index];
+                    final announcement = visibleAnnouncements[index];
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
@@ -756,6 +981,21 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             ),
           ),
           actions: [
+            Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                final hasVisibleNotifications =
+                    announcementProvider.hasVisibleAnnouncementsFor('driver');
+                return TextButton(
+                  onPressed: hasVisibleNotifications
+                      ? () {
+                          announcementProvider.clearAnnouncementsFor('driver');
+                          Navigator.pop(dialogContext);
+                        }
+                      : null,
+                  child: const Text('Clear Notifications'),
+                );
+              },
+            ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Close'),

@@ -114,13 +114,30 @@ class _ReportsManagementScreenState extends State<ReportsManagementScreen> {
                                     .toUpperCase(),
                               ),
                               subtitle: Text(report.description),
-                              trailing: Text(
-                                report.status
-                                    .toString()
-                                    .split('.')
-                                    .last
-                                    .toUpperCase(),
-                                style: Theme.of(context).textTheme.bodySmall,
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: _statusColor(report.status)
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: _statusColor(report.status)
+                                        .withValues(alpha: 0.45),
+                                  ),
+                                ),
+                                child: Text(
+                                  report.status
+                                      .toString()
+                                      .split('.')
+                                      .last
+                                      .toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: _statusColor(report.status),
+                                  ),
+                                ),
                               ),
                               onTap: () {
                                 Navigator.of(context).push(
@@ -142,5 +159,18 @@ class _ReportsManagementScreenState extends State<ReportsManagementScreen> {
         },
       ),
     );
+  }
+
+  Color _statusColor(ReportStatus status) {
+    switch (status) {
+      case ReportStatus.pending:
+        return Colors.orange;
+      case ReportStatus.reviewed:
+        return Colors.blue;
+      case ReportStatus.resolved:
+        return Colors.green;
+      case ReportStatus.rejected:
+        return Colors.red;
+    }
   }
 }

@@ -194,16 +194,20 @@ class _NotificationsManagementScreenState
                   DropdownButtonFormField<AnnouncementType>(
                     value: selectedType,
                     decoration: const InputDecoration(
-                      labelText: 'Type',
-                      prefixIcon: Icon(Icons.category),
+                      labelText: 'Notification Type',
+                      border: OutlineInputBorder(),
                     ),
                     items: AnnouncementType.values.map((type) {
                       return DropdownMenuItem(
                         value: type,
                         child: Row(
                           children: [
-                            Icon(_getAnnouncementIcon(type), size: 20),
-                            const SizedBox(width: 8),
+                            Icon(
+                              _getAnnouncementIcon(type),
+                              size: 20,
+                              color: _getAnnouncementColor(type),
+                            ),
+                            const SizedBox(width: 12),
                             Text(type.toString().split('.').last.toUpperCase()),
                           ],
                         ),
@@ -213,25 +217,24 @@ class _NotificationsManagementScreenState
                       setState(() => selectedType = value!);
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: titleController,
                     decoration: const InputDecoration(
                       labelText: 'Title',
                       hintText: 'e.g., Bus Service Update',
-                      prefixIcon: Icon(Icons.title),
+                      border: OutlineInputBorder(),
                     ),
                     validator: (value) =>
                         value?.isEmpty ?? true ? 'Required' : null,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: descriptionController,
                     decoration: const InputDecoration(
                       labelText: 'Message',
                       hintText: 'Enter notification message...',
-                      prefixIcon: Icon(Icons.message),
-                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
                     ),
                     maxLines: 4,
                     validator: (value) =>
@@ -245,15 +248,18 @@ class _NotificationsManagementScreenState
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.info_outline, color: Colors.blue.shade700),
+                        Icon(Icons.info_outline,
+                            size: 20, color: Colors.blue.shade700),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             'This notification will be sent to all app users',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 13,
                               color: Colors.blue.shade900,
+                              height: 1.3,
                             ),
                           ),
                         ),
@@ -297,16 +303,14 @@ class _NotificationsManagementScreenState
                   navigator.pop();
 
                   if (error == null) {
-                    scaffoldMessenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('Notification created successfully'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    // List auto-refreshes — no snackbar to avoid context crashes.
                     announcementProvider.fetchAnnouncements();
                   } else {
                     scaffoldMessenger.showSnackBar(
-                      SnackBar(content: Text('Error: $error')),
+                      SnackBar(
+                        content: Text('Error: $error'),
+                        backgroundColor: Colors.red,
+                      ),
                     );
                   }
                 }
@@ -393,23 +397,44 @@ class _NotificationsManagementScreenState
   }
 
   void _resendNotification(Announcement announcement) {
+    final scaffoldContext = context;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Resend Notification'),
         content: Text(
             'Are you sure you want to resend "${announcement.title}" to all users?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Resend feature coming soon')),
-              );
+            onPressed: () async {
+              final navigator = Navigator.of(dialogContext);
+              final messenger = ScaffoldMessenger.of(scaffoldContext);
+
+              final error = await _firestoreService
+                  .resendAnnouncementNotification(announcement.announcementId);
+
+              if (!mounted) return;
+              navigator.pop();
+
+              if (error == null) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Notification sent to all users'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } else {
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $error'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             child: const Text('Resend'),
           ),
@@ -443,16 +468,14 @@ class _NotificationsManagementScreenState
               navigator.pop();
 
               if (error == null) {
-                scaffoldMessenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Notification deleted successfully'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                // List auto-refreshes — no snackbar to avoid context crashes.
                 announcementProvider.fetchAnnouncements();
               } else {
                 scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('Error: $error')),
+                  SnackBar(
+                    content: Text('Error: $error'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
               }
             },

@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 import '../../constants/app_constants.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../providers/driver_shift_provider.dart';
+import '../../models/bus_stop_model.dart';
+import '../../services/location_service.dart';
 
 class DriverMapScreen extends StatefulWidget {
   const DriverMapScreen({super.key});
@@ -14,6 +19,8 @@ class DriverMapScreen extends StatefulWidget {
 }
 
 class _DriverMapScreenState extends State<DriverMapScreen> {
+  final Completer<GoogleMapController> _mapController = Completer<GoogleMapController>();
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +40,26 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
     await announcementProvider.fetchAnnouncements();
   }
 
+  Future<void> _goToCurrentLocation() async {
+    final position = await LocationService.getCurrentPosition();
+    if (position == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to get current location')),
+        );
+      }
+      return;
+    }
+
+    final controller = await _mapController.future;
+    controller.animateCamera(
+      CameraUpdate.newLatLngZoom(
+        LatLng(position.latitude, position.longitude),
+        16.0,
+      ),
+    );
+  }
+
   void _showNotificationsDialog() {
     showDialog(
       context: context,
@@ -43,11 +70,12 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             width: double.maxFinite,
             child: Consumer<AnnouncementProvider>(
               builder: (context, announcementProvider, _) {
+                final visibleAnnouncements =
+                    announcementProvider.visibleAnnouncementsFor('driver');
                 if (announcementProvider.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
-                if (announcementProvider.announcements.isEmpty) {
+                if (visibleAnnouncements.isEmpty) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
@@ -55,12 +83,11 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                     ),
                   );
                 }
-
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: announcementProvider.announcements.length,
+                  itemCount: visibleAnnouncements.length,
                   itemBuilder: (context, index) {
-                    final announcement = announcementProvider.announcements[index];
+                    final announcement = visibleAnnouncements[index];
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
@@ -87,6 +114,21 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             ),
           ),
           actions: [
+            Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                final hasVisibleNotifications =
+                    announcementProvider.hasVisibleAnnouncementsFor('driver');
+                return TextButton(
+                  onPressed: hasVisibleNotifications
+                      ? () {
+                          announcementProvider.clearAnnouncementsFor('driver');
+                          Navigator.pop(context);
+                        }
+                      : null,
+                  child: const Text('Clear Notifications'),
+                );
+              },
+            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
@@ -147,7 +189,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         actions: [
           Consumer<AnnouncementProvider>(
             builder: (context, announcementProvider, _) {
-              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              final hasUnread = announcementProvider.hasVisibleAnnouncementsFor('driver');
               return Stack(
                 children: [
                   IconButton(
@@ -188,9 +230,10 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                   target: LatLng(1.4651, 110.4277),
                   zoom: AppConstants.defaultMapZoom,
                 ),
+                onMapCreated: (controller) => _mapController.complete(controller),
                 markers: markers,
                 myLocationEnabled: true,
-                myLocationButtonEnabled: true,
+                myLocationButtonEnabled: false,
               );
             },
           ),
@@ -198,35 +241,229 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             top: 16,
             left: 16,
             right: 16,
-            child: Consumer2<BusProvider, RouteProvider>(
-              builder: (context, busProvider, routeProvider, _) {
-                final textStyle = Theme.of(context).textTheme.bodyMedium;
+            child: Consumer3<DriverShiftProvider, RouteProvider, BusProvider>(
+              builder: (context, shiftProvider, routeProvider, busProvider, _) {
+                final assignedBus = shiftProvider.assignedBus;
+
+                String nextStopName = '--';
+                String etaMinutes = '--';
+                if (assignedBus?.assignedRoute != null) {
+                  try {
+                    final currentBus = assignedBus!;
+                    final route = routeProvider.routes.firstWhere(
+                      (r) => r.routeId == currentBus.assignedRoute,
+                    );
+
+                    final stops = route.stopIds
+                        .map((stopId) {
+                          try {
+                            return routeProvider.busStops.firstWhere(
+                              (stop) => stop.stopId == stopId,
+                            );
+                          } catch (_) {
+                            return null;
+                          }
+                        })
+                        .where((stop) => stop != null)
+                        .cast<BusStop>()
+                        .toList();
+
+                    if (stops.isNotEmpty) {
+                      int currentStopIndex = 0;
+                      double minDistanceMeters = double.infinity;
+
+                      for (int i = 0; i < stops.length; i++) {
+                        final distanceMeters = Geolocator.distanceBetween(
+                          currentBus.latitude,
+                          currentBus.longitude,
+                          stops[i].latitude,
+                          stops[i].longitude,
+                        );
+                        if (distanceMeters < minDistanceMeters) {
+                          minDistanceMeters = distanceMeters;
+                          currentStopIndex = i;
+                        }
+                      }
+
+                        final nextStopIndex = (currentStopIndex + 1) % stops.length;
+                      final nextStop = stops[nextStopIndex];
+
+                      final nextDistanceMeters = Geolocator.distanceBetween(
+                        currentBus.latitude,
+                        currentBus.longitude,
+                        nextStop.latitude,
+                        nextStop.longitude,
+                      );
+
+                      const estimatedSpeedKmH = 25.0;
+                      final eta = ((nextDistanceMeters / 1000) / estimatedSpeedKmH * 60).ceil();
+
+                      nextStopName = nextStop.stopName;
+                      etaMinutes = '${eta <= 0 ? 1 : eta} min';
+                    }
+                  } catch (_) {}
+                }
+
                 return Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 4,
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
                     children: [
-                      Text('Buses: ${busProvider.buses.length}', style: textStyle),
-                      Text('Stops: ${routeProvider.busStops.length}', style: textStyle),
-                      Text('Shift: Not started', style: textStyle),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Expanded(
+                            child: _buildCompactStat(
+                              icon: Icons.people,
+                              label: 'Passengers',
+                              value: assignedBus != null
+                                  ? '${assignedBus.currentOccupancy}/${assignedBus.capacity}'
+                                  : '--',
+                              color: Colors.blue,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 40,
+                            color: Colors.grey.shade300,
+                          ),
+                          Expanded(
+                            child: _buildCompactStat(
+                              icon: Icons.flag,
+                              label: 'Next Stop',
+                              value: nextStopName,
+                              color: Colors.green,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 40,
+                            color: Colors.grey.shade300,
+                          ),
+                          Expanded(
+                            child: _buildCompactStat(
+                              icon: Icons.schedule,
+                              label: 'ETA',
+                              value: etaMinutes,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (!shiftProvider.isOnShift)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.orange.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 16,
+                                  color: Colors.orange.shade700,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Start your shift to begin tracking',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 );
               },
             ),
           ),
+          Positioned(
+            right: 8,
+            bottom: 110,
+            child: Material(
+              elevation: 4,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: _goToCurrentLocation,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.my_location,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCompactStat({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 }

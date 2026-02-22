@@ -10,6 +10,7 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../providers/dashboard_nav_provider.dart';
 import '../../models/bus_stop_model.dart';
 import '../../constants/app_constants.dart';
 import '../../constants/app_theme.dart';
@@ -340,6 +341,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     subtitle: Text('${stop.stopCode} • ${distance.toStringAsFixed(2)} km away'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () {
+                      _originController.text = stop.stopName;
+                      setState(() => _originSuggestions = []);
                       Navigator.pop(context);
                       _moveCamera(LatLng(stop.latitude, stop.longitude));
                     },
@@ -420,11 +423,12 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             width: double.maxFinite,
             child: Consumer<AnnouncementProvider>(
               builder: (context, announcementProvider, _) {
+                final visibleAnnouncements =
+                    announcementProvider.visibleAnnouncementsFor('student');
                 if (announcementProvider.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
-                if (announcementProvider.announcements.isEmpty) {
+                if (visibleAnnouncements.isEmpty) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
@@ -432,12 +436,11 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     ),
                   );
                 }
-
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: announcementProvider.announcements.length,
+                  itemCount: visibleAnnouncements.length,
                   itemBuilder: (context, index) {
-                    final announcement = announcementProvider.announcements[index];
+                    final announcement = visibleAnnouncements[index];
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
@@ -464,6 +467,21 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             ),
           ),
           actions: [
+            Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                final hasVisibleNotifications =
+                    announcementProvider.hasVisibleAnnouncementsFor('student');
+                return TextButton(
+                  onPressed: hasVisibleNotifications
+                      ? () {
+                          announcementProvider.clearAnnouncementsFor('student');
+                          Navigator.pop(context);
+                        }
+                      : null,
+                  child: const Text('Clear Notifications'),
+                );
+              },
+            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
@@ -484,7 +502,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
         actions: [
           Consumer<AnnouncementProvider>(
             builder: (context, announcementProvider, _) {
-              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              final hasUnread = announcementProvider.hasVisibleAnnouncementsFor('student');
               return Stack(
                 children: [
                   IconButton(
@@ -545,7 +563,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             right: 16,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
@@ -562,7 +580,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     controller: _originController,
                     textInputAction: TextInputAction.search,
                     decoration: InputDecoration(
-                      hintText: 'Current location (type to search)',
+                      hintText: 'Current location',
                       prefixIcon: const Icon(Icons.my_location),
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.search),
@@ -595,7 +613,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     controller: _destinationController,
                     textInputAction: TextInputAction.search,
                     decoration: InputDecoration(
-                      hintText: 'Enter destination (e.g. Faculty of Engineering)',
+                      hintText: 'Enter destination',
                       prefixIcon: const Icon(Icons.place),
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.search),
@@ -624,13 +642,34 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                           .toList(),
                     ),
 
-                  // ── Live status strip ──────────────────────────────
-                  Consumer2<BusProvider, AnnouncementProvider>(
-                    builder: (context, busProvider, announcementProvider, _) {
-                      final activeBuses = busProvider.buses
-                          .where((b) => b.isActive)
-                          .length;
-                      final totalBuses = busProvider.buses.length;
+                  // ── Live status strip ──────────────────────────────────
+                  Consumer4<BusProvider, AnnouncementProvider, RouteProvider,
+                      LocationProvider>(
+                    builder: (context, busProvider, announcementProvider,
+                        routeProvider, locationProvider, _) {
+                      final pos = locationProvider.currentPosition;
+
+                      // Active buses within 5 km
+                      final nearbyBusCount = pos == null
+                          ? 0
+                          : busProvider.buses.where((b) {
+                              if (!b.isActive) return false;
+                              return _calculateDistance(pos.latitude,
+                                      pos.longitude, b.latitude,
+                                      b.longitude) <=
+                                  5.0;
+                            }).length;
+
+                      // Bus stops within 5 km
+                      final nearbyStopCount = pos == null
+                          ? 0
+                          : routeProvider.busStops.where((s) {
+                              return _calculateDistance(pos.latitude,
+                                      pos.longitude, s.latitude,
+                                      s.longitude) <=
+                                  5.0;
+                            }).length;
+
                       final latestAnnouncement =
                           announcementProvider.announcements.isNotEmpty
                               ? announcementProvider.announcements.first
@@ -641,23 +680,32 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                           const Divider(height: 12, thickness: 0.8),
                           Row(
                             children: [
-                              // Active buses chip
-                              _statusChip(
-                                icon: Icons.directions_bus,
-                                label:
-                                    '$activeBuses/$totalBuses Buses Active',
-                                color: activeBuses > 0
-                                    ? Colors.green
-                                    : Colors.grey,
+                              // Buses Near Me chip
+                              GestureDetector(
+                                onTap: () => context
+                                    .read<DashboardNavProvider>()
+                                    .navigateToDashboardTab(1),
+                                child: _statusChip(
+                                  icon: Icons.directions_bus,
+                                  label: pos != null
+                                      ? '$nearbyBusCount Buses Near Me'
+                                      : 'Buses Near Me',
+                                  color: nearbyBusCount > 0
+                                      ? Colors.green
+                                      : Colors.grey,
+                                ),
                               ),
                               const SizedBox(width: 8),
-                              // Routes chip
-                              Consumer<RouteProvider>(
-                                builder: (context, routeProvider, _) =>
-                                    _statusChip(
-                                  icon: Icons.route,
-                                  label:
-                                      '${routeProvider.routes.length} Routes',
+                              // Stops Near Me chip
+                              GestureDetector(
+                                onTap: () => context
+                                    .read<DashboardNavProvider>()
+                                    .navigateToDashboardTab(2),
+                                child: _statusChip(
+                                  icon: Icons.place,
+                                  label: pos != null
+                                      ? '$nearbyStopCount Stops Near Me'
+                                      : 'Stops Near Me',
                                   color: Colors.blue,
                                 ),
                               ),

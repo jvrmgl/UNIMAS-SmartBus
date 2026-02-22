@@ -13,6 +13,8 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool _minDelayElapsed = false;
+  bool _hasNavigated = false;
+  AuthProvider? _authProvider;
 
   @override
   void initState() {
@@ -24,24 +26,30 @@ class _SplashScreenState extends State<SplashScreen> {
         _tryNavigate();
       }
     });
+  }
 
-    // Also listen for changes in AuthProvider so we navigate as soon as
-    // both the delay has elapsed AND auth state is fully resolved.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AuthProvider>().addListener(_tryNavigate);
-    });
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<AuthProvider>();
+    if (_authProvider != provider) {
+      _authProvider?.removeListener(_tryNavigate);
+      _authProvider = provider;
+      _authProvider?.addListener(_tryNavigate);
+    }
   }
 
   @override
   void dispose() {
     // Remove the listener when this screen is disposed.
-    context.read<AuthProvider>().removeListener(_tryNavigate);
+    _authProvider?.removeListener(_tryNavigate);
     super.dispose();
   }
 
   void _tryNavigate() {
-    if (!mounted) return;
-    final authProvider = context.read<AuthProvider>();
+    if (!mounted || _hasNavigated) return;
+    final authProvider = _authProvider;
+    if (authProvider == null) return;
 
     // Wait until both the minimum delay has passed and Firebase + Firestore
     // have finished restoring the session.
@@ -51,17 +59,22 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (authProvider.isAuthenticated) {
       if (userRole == UserRole.student) {
+        _hasNavigated = true;
         Navigator.of(context).pushReplacementNamed('/student');
       } else if (userRole == UserRole.driver) {
+        _hasNavigated = true;
         Navigator.of(context).pushReplacementNamed('/driver');
       } else if (userRole == UserRole.admin) {
+        _hasNavigated = true;
         Navigator.of(context).pushReplacementNamed('/admin');
       } else {
         // Authenticated but no recognised role — fall back to guest view.
+        _hasNavigated = true;
         Navigator.of(context).pushReplacementNamed('/guest');
       }
     } else {
       // Not logged in — open the guest map view.
+      _hasNavigated = true;
       Navigator.of(context).pushReplacementNamed('/guest');
     }
   }

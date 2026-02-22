@@ -46,10 +46,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             width: double.maxFinite,
             child: Consumer<AnnouncementProvider>(
               builder: (context, announcementProvider, _) {
+                final visibleAnnouncements =
+                    announcementProvider.visibleAnnouncementsFor('admin');
                 if (announcementProvider.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (announcementProvider.announcements.isEmpty) {
+                if (visibleAnnouncements.isEmpty) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
@@ -59,10 +61,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 }
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: announcementProvider.announcements.length,
+                  itemCount: visibleAnnouncements.length,
                   itemBuilder: (context, index) {
-                    final announcement =
-                        announcementProvider.announcements[index];
+                    final announcement = visibleAnnouncements[index];
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
@@ -86,6 +87,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
           actions: [
+            Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                final hasVisibleNotifications =
+                    announcementProvider.hasVisibleAnnouncementsFor('admin');
+                return TextButton(
+                  onPressed: hasVisibleNotifications
+                      ? () {
+                          announcementProvider.clearAnnouncementsFor('admin');
+                          Navigator.pop(context);
+                        }
+                      : null,
+                  child: const Text('Clear Notifications'),
+                );
+              },
+            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
@@ -105,7 +121,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         actions: [
           Consumer<AnnouncementProvider>(
             builder: (context, announcementProvider, _) {
-              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              final hasUnread =
+                  announcementProvider.hasVisibleAnnouncementsFor('admin');
               return Stack(
                 children: [
                   IconButton(

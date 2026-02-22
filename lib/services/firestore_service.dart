@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../models/bus_model.dart';
 import '../models/route_model.dart';
 import '../models/bus_stop_model.dart';
@@ -12,6 +13,7 @@ import '../models/student_trip_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'asia-southeast1');
 
   // ============ BUS OPERATIONS ============
 
@@ -59,6 +61,14 @@ class FirestoreService {
       }
       return null;
     });
+  }
+
+  // Stream all buses in real-time
+  Stream<List<Bus>> getBusesStream() {
+    return _firestore.collection('buses').snapshots().map(
+          (snapshot) =>
+              snapshot.docs.map((doc) => Bus.fromMap(doc.data())).toList(),
+        );
   }
 
   // Update bus location and occupancy
@@ -134,6 +144,8 @@ class FirestoreService {
     try {
       await _firestore.collection('buses').doc(busId).update({
         'isActive': isActive,
+        // Reset occupancy when deactivating so stale counts are cleared
+        if (!isActive) 'currentOccupancy': 0,
         'lastUpdated': DateTime.now().toIso8601String(),
       });
       return null;
@@ -538,6 +550,14 @@ class FirestoreService {
     });
   }
 
+  // Stream single report by ID
+  Stream<Report?> getReportStream(String reportId) {
+    return _firestore.collection('reports').doc(reportId).snapshots().map((doc) {
+      if (!doc.exists || doc.data() == null) return null;
+      return Report.fromMap(doc.data()!);
+    });
+  }
+
   // Stream report messages
   Stream<List<ReportMessage>> getReportMessagesStream(String reportId) {
     return _firestore
@@ -619,9 +639,21 @@ class FirestoreService {
   Future<String?> createAnnouncement(Announcement announcement) async {
     try {
       await _firestore.collection('announcements').doc(announcement.announcementId).set(announcement.toMap());
+      // Cloud Function will automatically send push notification
       return null;
     } catch (e) {
       return 'Error creating announcement: $e';
+    }
+  }
+
+  // Resend announcement notification via Cloud Function
+  Future<String?> resendAnnouncementNotification(String announcementId) async {
+    try {
+      final callable = _functions.httpsCallable('resendAnnouncementNotification');
+      await callable.call({'announcementId': announcementId});
+      return null;
+    } catch (e) {
+      return 'Error resending notification: $e';
     }
   }
 

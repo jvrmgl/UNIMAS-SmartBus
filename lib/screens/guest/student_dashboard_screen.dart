@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../providers/location_provider.dart';
+import '../../providers/dashboard_nav_provider.dart';
 import '../../constants/app_theme.dart';
+import '../../models/bus_model.dart';
 import '../../models/bus_stop_model.dart';
 import '../../models/schedule_image_model.dart';
 import '../../services/firestore_service.dart';
@@ -37,11 +41,23 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
       context.read<RouteProvider>().fetchRoutes();
       context.read<RouteProvider>().fetchBusStops();
       context.read<AnnouncementProvider>().fetchAnnouncements();
+      // Listen for tab-switch requests from the map screen
+      context.read<DashboardNavProvider>().addListener(_onNavChange);
     });
+  }
+
+  void _onNavChange() {
+    final nav = context.read<DashboardNavProvider>();
+    final tab = nav.pendingDashboardTab;
+    if (tab != null && mounted) {
+      _tabController.animateTo(tab);
+      nav.consumeDashboardTab();
+    }
   }
 
   @override
   void dispose() {
+    context.read<DashboardNavProvider>().removeListener(_onNavChange);
     _tabController.dispose();
     super.dispose();
   }
@@ -55,7 +71,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
         actions: [
           Consumer<AnnouncementProvider>(
             builder: (context, announcementProvider, _) {
-              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              final hasUnread =
+                  announcementProvider.hasVisibleAnnouncementsFor('student');
               return Stack(
                 children: [
                   IconButton(
@@ -292,8 +309,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   }
 
   Widget _buildBusesTab() {
-    return Consumer<BusProvider>(
-      builder: (context, busProvider, _) {
+    return Consumer3<BusProvider, RouteProvider, LocationProvider>(
+      builder: (context, busProvider, routeProvider, locationProvider, _) {
         final activeBuses = busProvider.buses.where((bus) => bus.isActive).toList();
 
         if (busProvider.isLoading) {
@@ -316,159 +333,239 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           );
         }
 
-        return Consumer<RouteProvider>(
-          builder: (context, routeProvider, _) {
-            return ListView.builder(
+        // Find nearest active bus to user
+        Bus? nearestBus;
+        double? nearestBusKm;
+        final pos = locationProvider.currentPosition;
+        if (pos != null) {
+          double minDist = double.infinity;
+          for (final b in activeBuses) {
+            final d = Geolocator.distanceBetween(
+                  pos.latitude, pos.longitude, b.latitude, b.longitude) /
+                1000;
+            if (d < minDist) {
+              minDist = d;
+              nearestBus = b;
+              nearestBusKm = minDist;
+            }
+          }
+        }
+
+        String? getBusRouteName(Bus bus) {
+          if (bus.assignedRoute == null) return null;
+          try {
+            return routeProvider.routes
+                .firstWhere((r) => r.routeId == bus.assignedRoute)
+                .routeName;
+          } catch (_) {
+            return null;
+          }
+        }
+
+        Widget buildBusCard(Bus bus, {String? distanceLabel}) {
+          final routeName = getBusRouteName(bus);
+          final occupancyPercent = bus.getOccupancyPercentage();
+          final isNearCapacity = bus.isNearCapacity();
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
               padding: const EdgeInsets.all(16),
-              itemCount: activeBuses.length,
-              itemBuilder: (context, index) {
-                final bus = activeBuses[index];
-                
-                // Get route name if bus has assigned route
-                String? routeName;
-                if (bus.assignedRoute != null) {
-                  try {
-                    final route = routeProvider.routes.firstWhere(
-                      (r) => r.routeId == bus.assignedRoute,
-                    );
-                    routeName = route.routeName;
-                  } catch (_) {
-                    routeName = null;
-                  }
-                }
-                
-                final occupancyPercent = bus.getOccupancyPercentage();
-                final isNearCapacity = bus.isNearCapacity();
-                
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Bus ${bus.busNumber}',
-                                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.bold,
+                            Row(
+                              children: [
+                                Text(
+                                  'Bus ${bus.busNumber}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                                if (distanceLabel != null) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primaryColor
+                                          .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.confirmation_number, 
-                                          size: 14, 
-                                          color: Theme.of(context).textTheme.bodySmall?.color),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        bus.registrationNumber,
-                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                    child: Text(
+                                      distanceLabel,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.primaryColor,
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                    ],
-                                  ),
-                                  if (routeName != null) ...[
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.route, 
-                                            size: 14, 
-                                            color: Colors.blue),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            routeName,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.blue,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
                                     ),
-                                  ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.confirmation_number,
+                                    size: 14,
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.color),
+                                const SizedBox(width: 4),
+                                Text(
+                                  bus.registrationNumber,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                            if (routeName != null) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.route,
+                                      size: 14, color: Colors.blue),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      routeName,
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.blue,
+                                          fontWeight: FontWeight.w500),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
                                 ],
                               ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isNearCapacity
-                                    ? Colors.orange
-                                    : Colors.green,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${bus.currentOccupancy}/${bus.capacity}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        // Occupancy Progress
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: occupancyPercent / 100,
-                            minHeight: 8,
-                            backgroundColor: Colors.grey.shade300,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              isNearCapacity ? Colors.orange : Colors.green,
-                            ),
-                          ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isNearCapacity ? Colors.orange : Colors.green,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Occupancy: ${occupancyPercent.toStringAsFixed(1)}%',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => BusDetailScreen(bus: bus),
-                                  ),
-                                );
-                              },
-                              child: const Text('Board Bus'),
-                            ),
-                          ],
+                        child: Text(
+                          '${bus.currentOccupancy}/${bus.capacity}',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: occupancyPercent / 100,
+                      minHeight: 8,
+                      backgroundColor: Colors.grey.shade300,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          isNearCapacity ? Colors.orange : Colors.green),
                     ),
                   ),
-                );
-              },
-            );
-          },
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Occupancy: ${occupancyPercent.toStringAsFixed(1)}%',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w500),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => BusDetailScreen(bus: bus)),
+                        ),
+                        child: const Text('Board Bus'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── Near you section ──────────────────────────────────────
+            if (nearestBus != null) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.near_me, size: 16, color: AppTheme.primaryColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Bus near you',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              buildBusCard(
+                nearestBus,
+                distanceLabel:
+                    '${nearestBusKm!.toStringAsFixed(1)} km away',
+              ),
+              const SizedBox(height: 4),
+              const Divider(),
+              const SizedBox(height: 4),
+            ],
+            // ── All buses ─────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.directions_bus,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text(
+                    'All buses',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            ...activeBuses.map((bus) => buildBusCard(bus)),
+          ],
         );
       },
     );
   }
 
   Widget _buildRoutesTab() {
-    return Consumer<RouteProvider>(
-      builder: (context, routeProvider, _) {
+    return Consumer3<RouteProvider, BusProvider, LocationProvider>(
+      builder: (context, routeProvider, busProvider, locationProvider, _) {
         if (routeProvider.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -489,120 +586,384 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: routeProvider.routes.length,
-          itemBuilder: (context, index) {
-            final route = routeProvider.routes[index];
-            
-            // Get stops for this route
-            final stops = route.stopIds
-                .map((stopId) {
-                  try {
-                    return routeProvider.busStops.firstWhere(
-                      (stop) => stop.stopId == stopId,
-                    );
-                  } catch (_) {
-                    return null;
-                  }
-                })
-                .where((stop) => stop != null)
-                .cast<BusStop>()
-                .toList();
-            
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: ExpansionTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor,
-                    borderRadius: BorderRadius.circular(8),
+        // Find closest bus stop to user
+        BusStop? nearestStop;
+        double? nearestStopKm;
+        final pos = locationProvider.currentPosition;
+        if (pos != null && routeProvider.busStops.isNotEmpty) {
+          double minDist = double.infinity;
+          for (final s in routeProvider.busStops) {
+            final d = Geolocator.distanceBetween(
+                    pos.latitude, pos.longitude, s.latitude, s.longitude) /
+                1000;
+            if (d < minDist) {
+              minDist = d;
+              nearestStop = s;
+              nearestStopKm = minDist;
+            }
+          }
+        }
+
+        Widget buildRouteCard(int index) {
+          final route = routeProvider.routes[index];
+          final stops = route.stopIds
+              .map((stopId) {
+                try {
+                  return routeProvider.busStops
+                      .firstWhere((stop) => stop.stopId == stopId);
+                } catch (_) {
+                  return null;
+                }
+              })
+              .where((stop) => stop != null)
+              .cast<BusStop>()
+              .toList();
+
+          Bus? currentBus;
+          try {
+            currentBus = busProvider.buses.firstWhere(
+              (bus) => bus.assignedRoute == route.routeId && bus.isActive,
+            );
+          } catch (_) {
+            currentBus = null;
+          }
+
+          int? currentStopIndex;
+          if (currentBus != null && stops.isNotEmpty) {
+            double minDistance = double.infinity;
+            for (int i = 0; i < stops.length; i++) {
+              final distance = _calculateDistance(
+                currentBus.latitude, currentBus.longitude,
+                stops[i].latitude, stops[i].longitude,
+              );
+              if (distance < minDistance) {
+                minDistance = distance;
+                currentStopIndex = i;
+              }
+            }
+          }
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ExpansionTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  route.routeCode,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
-                  child: Text(
-                    route.routeCode,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                ),
+              ),
+              title: Text(route.routeName,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: currentBus != null
+                  ? Row(
+                      children: [
+                        Icon(Icons.directions_bus,
+                            size: 14, color: Colors.green),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Bus ${currentBus.busNumber} active • ${route.stopIds.length} stops',
+                          style: const TextStyle(
+                              color: Colors.green, fontSize: 12),
+                        ),
+                      ],
+                    )
+                  : Text('${route.stopIds.length} stops'),
+              children: [
+                if (stops.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'No stop data available',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: stops.asMap().entries.map((entry) {
+                        final stopIndex = entry.key;
+                        final stop = entry.value;
+                        return _buildStopItem(
+                          stop: stop,
+                          isFirst: stopIndex == 0,
+                          isLast: stopIndex == stops.length - 1,
+                          isCurrent: stopIndex == currentStopIndex,
+                        );
+                      }).toList(),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── Stop near you ─────────────────────────────────────────
+            if (nearestStop != null) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.near_me, size: 16, color: AppTheme.primaryColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Stop near you',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppTheme.primaryColor,
+                    child: const Icon(Icons.bus_alert,
+                        color: Colors.white, size: 20),
+                  ),
+                  title: Text(nearestStop.stopName,
+                      style:
+                          const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                      '${nearestStop.stopCode} • ${nearestStopKm!.toStringAsFixed(1)} km away'),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      nearestStop.stopCode,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.primaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
-                title: Text(
-                  route.routeName,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text('${route.stopIds.length} stops'),
+              ),
+              const Divider(),
+              const SizedBox(height: 4),
+            ],
+            // ── All routes ────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
                 children: [
-                  if (stops.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'No stop data available. Please ensure stops are added to Firebase.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey,
+                  Icon(Icons.route,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text(
+                    'All routes',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                    )
-                  else
-                    ...stops.asMap().entries.map((entry) {
-                      final stopIndex = entry.key;
-                      final stop = entry.value;
-                      final isLast = stopIndex == stops.length - 1;
-                      
-                      return ListTile(
-                        leading: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${stopIndex + 1}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (!isLast)
-                              Container(
-                                width: 2,
-                                height: 20,
-                                color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                              ),
-                          ],
-                        ),
-                        title: Text(stop.stopName),
-                        subtitle: Text(stop.stopCode),
-                        dense: true,
-                      );
-                    }),
+                  ),
                 ],
               ),
-            );
-          },
+            ),
+            ...List.generate(
+                routeProvider.routes.length, (i) => buildRouteCard(i)),
+          ],
         );
       },
     );
   }
 
+  Widget _buildStopItem({
+    required BusStop stop,
+    required bool isFirst,
+    required bool isLast,
+    required bool isCurrent,
+  }) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Timeline indicator
+          Column(
+            children: [
+              // Top line
+              if (!isFirst)
+                Container(
+                  width: 2,
+                  height: 20,
+                  color: isCurrent ? Colors.green : Theme.of(context).dividerColor,
+                ),
+              
+              // Stop indicator
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isCurrent ? Colors.green : Theme.of(context).colorScheme.surface,
+                  border: Border.all(
+                    color: isCurrent ? Colors.green : Theme.of(context).colorScheme.outline,
+                    width: 3,
+                  ),
+                ),
+                child: isCurrent
+                    ? const Icon(
+                        Icons.directions_bus,
+                        size: 12,
+                        color: Colors.white,
+                      )
+                    : null,
+              ),
+              
+              // Bottom line
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color: Theme.of(context).dividerColor,
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(width: 16),
+
+          // Stop details
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isCurrent
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? Colors.green.withValues(alpha: 0.12)
+                          : Colors.green.shade50)
+                      : (Theme.of(context).brightness == Brightness.dark
+                          ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)
+                          : Colors.grey.shade50),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isCurrent ? Colors.green : Theme.of(context).dividerColor,
+                    width: isCurrent ? 2 : 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            stop.stopName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: isCurrent ? Colors.green : Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isCurrent
+                                ? Colors.green
+                                : AppTheme.primaryColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            stop.stopCode,
+                            style: TextStyle(
+                              color: isCurrent ? Colors.white : AppTheme.primaryColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (stop.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        stop.description,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    if (isCurrent) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            size: 14,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Bus is near this stop',
+                            style: TextStyle(
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    // Simple Euclidean distance for approximation
+    final latDiff = lat1 - lat2;
+    final lonDiff = lon1 - lon2;
+    return (latDiff * latDiff + lonDiff * lonDiff);
+  }
+
   Widget _buildAnnouncementsTab() {
     return Consumer<AnnouncementProvider>(
       builder: (context, announcementProvider, _) {
+        final visibleAnnouncements =
+            announcementProvider.visibleAnnouncementsFor('student');
         if (announcementProvider.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (announcementProvider.announcements.isEmpty) {
+        if (visibleAnnouncements.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -620,9 +981,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: announcementProvider.announcements.length,
+          itemCount: visibleAnnouncements.length,
           itemBuilder: (context, index) {
-            final announcement = announcementProvider.announcements[index];
+            final announcement = visibleAnnouncements[index];
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: Padding(
@@ -682,6 +1043,21 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
             child: _buildAnnouncementsTab(),
           ),
           actions: [
+            Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                final hasVisibleNotifications =
+                    announcementProvider.hasVisibleAnnouncementsFor('student');
+                return TextButton(
+                  onPressed: hasVisibleNotifications
+                      ? () {
+                          announcementProvider.clearAnnouncementsFor('student');
+                          Navigator.pop(context);
+                        }
+                      : null,
+                  child: const Text('Clear Notifications'),
+                );
+              },
+            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),

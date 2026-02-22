@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../models/user_model.dart';
 import '../../providers/theme_provider.dart';
+import '../../constants/app_theme.dart';
 import '../shared/edit_profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -114,11 +115,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: double.maxFinite,
             child: Consumer<AnnouncementProvider>(
               builder: (context, announcementProvider, _) {
+                final visibleAnnouncements =
+                    announcementProvider.visibleAnnouncementsFor('student');
                 if (announcementProvider.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
-                if (announcementProvider.announcements.isEmpty) {
+                if (visibleAnnouncements.isEmpty) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
@@ -126,12 +128,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   );
                 }
-
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: announcementProvider.announcements.length,
+                  itemCount: visibleAnnouncements.length,
                   itemBuilder: (context, index) {
-                    final announcement = announcementProvider.announcements[index];
+                    final announcement = visibleAnnouncements[index];
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
@@ -158,6 +159,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           actions: [
+            Consumer<AnnouncementProvider>(
+              builder: (context, announcementProvider, _) {
+                final hasVisibleNotifications =
+                    announcementProvider.hasVisibleAnnouncementsFor('student');
+                return TextButton(
+                  onPressed: hasVisibleNotifications
+                      ? () {
+                          announcementProvider.clearAnnouncementsFor('student');
+                          Navigator.pop(context);
+                        }
+                      : null,
+                  child: const Text('Clear Notifications'),
+                );
+              },
+            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
@@ -177,7 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           Consumer<AnnouncementProvider>(
             builder: (context, announcementProvider, _) {
-              final hasUnread = announcementProvider.announcements.isNotEmpty;
+              final hasUnread = announcementProvider.hasVisibleAnnouncementsFor('student');
               return Stack(
                 children: [
                   IconButton(
@@ -289,21 +305,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const EditProfileScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Edit Profile'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EditProfileScreen(),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.edit, color: Colors.white, size: 22),
+                        SizedBox(width: 8),
+                        Text('Edit Profile', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -369,76 +394,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 24),
                   _buildSectionTitle('Staff Login'),
                   Card(
+                    clipBehavior: Clip.hardEdge,
                     child: ExpansionTile(
-                      title: const Text('Staff Login'),
-                      subtitle: const Text('For drivers and administrators'),
-                      leading: const Icon(Icons.badge),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.badge,
+                            color: Colors.white, size: 20),
+                      ),
+                      title: const Text(
+                        'For drivers and administrators',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: null,
                       initiallyExpanded: _isLoginExpanded,
                       onExpansionChanged: (expanded) {
-                        setState(() {
-                          _isLoginExpanded = expanded;
-                        });
+                        setState(() => _isLoginExpanded = expanded);
                       },
                       children: [
+                        const Divider(height: 1),
                         Padding(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // Email Field
                               TextField(
                                 controller: _emailController,
                                 enabled: !_isLoading,
                                 decoration: const InputDecoration(
                                   labelText: 'Email Address',
-                                  prefixIcon: Icon(Icons.email),
+                                  prefixIcon: Icon(Icons.email_outlined),
                                   hintText: 'Enter your email',
                                 ),
                                 keyboardType: TextInputType.emailAddress,
                               ),
                               const SizedBox(height: 16),
-                              // Password Field
                               TextField(
                                 controller: _passwordController,
                                 enabled: !_isLoading,
                                 decoration: InputDecoration(
                                   labelText: 'Password',
-                                  prefixIcon: const Icon(Icons.lock),
+                                  prefixIcon: const Icon(Icons.lock_outline),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
+                                          ? Icons.visibility_off_outlined
+                                          : Icons.visibility_outlined,
                                     ),
-                                    onPressed: () {
-                                      setState(
-                                        () => _obscurePassword = !_obscurePassword,
-                                      );
-                                    },
+                                    onPressed: () => setState(
+                                        () => _obscurePassword = !_obscurePassword),
                                   ),
                                   hintText: 'Enter your password',
                                 ),
                                 obscureText: _obscurePassword,
                               ),
                               const SizedBox(height: 24),
-                              // Login Button
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _handleLogin,
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              Colors.white,
-                                            ),
-                                          ),
-                                        )
-                                      : const Text('Login'),
+                              ElevatedButton(
+                                onPressed: _isLoading ? null : _handleLogin,
+                                style: ElevatedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
                                 ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  Colors.white),
+                                        ),
+                                      )
+                                    : const Text('Login'),
                               ),
                             ],
                           ),
@@ -450,7 +481,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Center(
                     child: Text(
                       'Students: No login needed, use the app as guest!',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 13,
+                          ),
                       textAlign: TextAlign.center,
                     ),
                   ),

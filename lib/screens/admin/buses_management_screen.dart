@@ -15,15 +15,24 @@ class BusesManagementScreen extends StatefulWidget {
 
 class _BusesManagementScreenState extends State<BusesManagementScreen> {
   final FirestoreService _firestoreService = FirestoreService();
+  late BusProvider _busProvider;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<BusProvider>().fetchBuses();
+      _busProvider = context.read<BusProvider>();
+      _busProvider.listenToBuses(); // real-time stream
       context.read<RouteProvider>().fetchRoutes();
     });
+  }
+
+  @override
+  void dispose() {
+    // Use the saved reference — never call context.read() inside dispose().
+    _busProvider.stopListeningToBuses();
+    super.dispose();
   }
 
   @override
@@ -357,9 +366,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                     backgroundColor: error == null ? Colors.green : Colors.red,
                   ),
                 );
-                if (error == null) {
-                  context.read<BusProvider>().fetchBuses();
-                }
+                // Stream auto-refreshes — no fetchBuses() needed.
               },
               child: const Text('Save'),
             ),
@@ -435,10 +442,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                     backgroundColor: error == null ? Colors.green : Colors.red,
                   ),
                 );
-                if (error == null) {
-                  context.read<BusProvider>().fetchBuses();
-                  context.read<RouteProvider>().fetchRoutes();
-                }
+                // Stream auto-refreshes — no fetchBuses() needed.
+                if (error == null) context.read<RouteProvider>().fetchRoutes();
               },
               child: const Text('Save'),
             ),
@@ -525,7 +530,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                 // Capture context-dependent objects before async gap
                 final navigator = Navigator.of(context);
                 final scaffoldMessenger = ScaffoldMessenger.of(context);
-                final busProvider = context.read<BusProvider>();
 
                 final error = await _firestoreService.addBus(bus);
                 if (!mounted) return;
@@ -535,7 +539,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                   scaffoldMessenger.showSnackBar(
                     const SnackBar(content: Text('Bus added successfully')),
                   );
-                  busProvider.fetchBuses();
+                  // Stream auto-refreshes — no fetchBuses() needed.
                 } else {
                   scaffoldMessenger.showSnackBar(
                     SnackBar(content: Text('Error: $error')),
@@ -623,9 +627,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                     backgroundColor: error == null ? Colors.green : Colors.red,
                   ),
                 );
-                if (error == null) {
-                  context.read<BusProvider>().fetchBuses();
-                }
+                // Stream auto-refreshes — no fetchBuses() needed.
               }
             },
             child: const Text('Save'),
@@ -636,22 +638,24 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
   }
 
   Future<void> _toggleBusStatus(Bus bus) async {
+    final wasActive = bus.isActive;
+
     final error = await _firestoreService.setBusActiveStatus(
       busId: bus.busId,
-      isActive: !bus.isActive,
+      isActive: !wasActive,
     );
-    if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error == null
-            ? 'Bus ${!bus.isActive ? 'activated' : 'deactivated'} successfully'
-            : 'Error: $error'),
-        backgroundColor: error == null ? Colors.green : Colors.red,
-      ),
-    );
-    if (error == null) {
-      context.read<BusProvider>().fetchBuses();
+    // Stream auto-updates the UI with the new status badge immediately.
+    // Snackbar removed to avoid context lifecycle crashes during rapid rebuilds.
+    if (error != null) {
+      // Only show error messages — success is already visible in the UI.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -682,9 +686,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                   backgroundColor: error == null ? Colors.green : Colors.red,
                 ),
               );
-              if (error == null) {
-                context.read<BusProvider>().fetchBuses();
-              }
+              // Stream auto-refreshes — no fetchBuses() needed.
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),

@@ -337,17 +337,11 @@ class _ReportScreenState extends State<ReportScreen>
               itemCount: reports.length,
               itemBuilder: (context, index) {
                 final report = reports[index];
+                final statusColor = _statusColor(report.status);
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    title: Text(
-                      report.category.toString().split('.').last.toUpperCase(),
-                    ),
-                    subtitle: Text(report.description),
-                    trailing: Text(
-                      report.status.toString().split('.').last.toUpperCase(),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -358,6 +352,104 @@ class _ReportScreenState extends State<ReportScreen>
                         ),
                       );
                     },
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  report.category
+                                      .toString()
+                                      .split('.')
+                                      .last
+                                      .toUpperCase(),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: statusColor.withValues(alpha: 0.5)),
+                                ),
+                                child: Text(
+                                  report.status
+                                      .toString()
+                                      .split('.')
+                                      .last
+                                      .toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: statusColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            report.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 4,
+                            children: [
+                              _infoChip(context, Icons.calendar_today,
+                                  _formatDate(report.createdAt)),
+                              if (report.busId != null && report.busId!.isNotEmpty)
+                                _infoChip(context, Icons.directions_bus,
+                                    'Bus: ${report.busId}'),
+                              if (report.routeId != null &&
+                                  report.routeId!.isNotEmpty)
+                                _infoChip(
+                                    context, Icons.route, 'Route: ${report.routeId}'),
+                            ],
+                          ),
+                          if (report.adminNotes != null &&
+                              report.adminNotes!.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.admin_panel_settings,
+                                    size: 14,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    report.adminNotes!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
                 );
               },
@@ -365,6 +457,39 @@ class _ReportScreenState extends State<ReportScreen>
           },
         );
       },
+    );
+  }
+
+  Color _statusColor(ReportStatus status) {
+    switch (status) {
+      case ReportStatus.pending:
+        return Colors.orange;
+      case ReportStatus.reviewed:
+        return Colors.blue;
+      case ReportStatus.resolved:
+        return Colors.green;
+      case ReportStatus.rejected:
+        return Colors.red;
+    }
+  }
+
+  String _formatDate(DateTime dt) {
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
+  Widget _infoChip(BuildContext context, IconData icon, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon,
+            size: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }

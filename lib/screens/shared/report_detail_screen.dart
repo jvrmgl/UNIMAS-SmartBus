@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/report_model.dart';
@@ -27,19 +28,36 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   bool _isSending = false;
   bool _isUpdating = false;
   late ReportStatus _selectedStatus;
+  late Report _currentReport;
+  StreamSubscription<Report?>? _reportSubscription;
 
   @override
   void initState() {
     super.initState();
-    // DeviceService is now a singleton and auto-initializes when needed
-    _selectedStatus = widget.report.status;
-    if (widget.report.adminNotes != null) {
-      _adminNotesController.text = widget.report.adminNotes!;
+    _currentReport = widget.report;
+    _selectedStatus = _currentReport.status;
+    if (_currentReport.adminNotes != null) {
+      _adminNotesController.text = _currentReport.adminNotes!;
     }
+    _reportSubscription = _firestoreService
+        .getReportStream(widget.report.reportId)
+        .listen((liveReport) {
+      if (liveReport != null && mounted && !_isUpdating) {
+        setState(() {
+          _currentReport = liveReport;
+          _selectedStatus = liveReport.status;
+          if (_adminNotesController.text.trim().isEmpty &&
+              (liveReport.adminNotes ?? '').isNotEmpty) {
+            _adminNotesController.text = liveReport.adminNotes!;
+          }
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _reportSubscription?.cancel();
     _messageController.dispose();
     _adminNotesController.dispose();
     super.dispose();
@@ -60,6 +78,8 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     setState(() => _isSending = true);
 
     final senderId = await _getSenderId();
+    if (!mounted) return;
+
     final message = ReportMessage(
       senderId: senderId,
       senderType: widget.senderType,
@@ -68,34 +88,54 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     );
 
     final result = await _firestoreService.addReportMessage(
-      reportId: widget.report.reportId,
+      reportId: _currentReport.reportId,
       message: message,
     );
 
+    if (!mounted) return;
     setState(() => _isSending = false);
 
     if (result == null) {
       _messageController.clear();
     } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result)),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result)),
+      );
     }
   }
 
   Future<void> _updateStatus() async {
     setState(() => _isUpdating = true);
     final result = await _firestoreService.updateReportStatus(
-      widget.report.reportId,
+      _currentReport.reportId,
       _selectedStatus,
       adminNotes: _adminNotesController.text.trim().isEmpty
           ? null
           : _adminNotesController.text.trim(),
     );
-    setState(() => _isUpdating = false);
-    if (result != null && mounted) {
+    if (!mounted) return;
+
+    setState(() {
+      _isUpdating = false;
+      if (result == null) {
+        _currentReport = _currentReport.copyWith(
+          status: _selectedStatus,
+          adminNotes: _adminNotesController.text.trim().isEmpty
+              ? null
+              : _adminNotesController.text.trim(),
+          resolvedAt: DateTime.now(),
+        );
+      }
+    });
+
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Report status updated successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result)),
       );
@@ -109,8 +149,12 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         title: const Text('Report Details'),
         elevation: 0,
       ),
-      body: Column(
-        children: [
+      body: Builder(
+        builder: (context) {
+          final report = _currentReport;
+
+          return Column(
+            children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -118,22 +162,112 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.report.category.toString().split('.').last.toUpperCase(),
-                  style: Theme.of(context).textTheme.titleMedium,
+                // Category + Status row
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        report.category
+                            .toString()
+                            .split('.')
+                            .last
+                            .toUpperCase(),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                      color: _statusColor(report.status)
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _statusColor(report.status)
+                              .withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Text(
+                        report.status
+                            .toString()
+                            .split('.')
+                            .last
+                            .toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _statusColor(report.status),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(widget.report.description),
-                if ((widget.report.imageUrls ?? []).isNotEmpty) ...[
+                const SizedBox(height: 10),
+                // Description
+                Text(report.description),
+                const SizedBox(height: 10),
+                // Meta chips
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    _metaChip(
+                        context,
+                        Icons.calendar_today,
+                        _formatDate(report.createdAt)),
+                    if (report.busId != null && report.busId!.isNotEmpty)
+                      _metaChip(context, Icons.directions_bus,
+                          'Bus: ${report.busId}'),
+                    if (report.routeId != null && report.routeId!.isNotEmpty)
+                      _metaChip(context, Icons.route,
+                          'Route: ${report.routeId}'),
+                  ],
+                ),
+                // Admin notes
+                if (report.adminNotes != null && report.adminNotes!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: Colors.blue.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.admin_panel_settings,
+                            size: 14, color: Colors.blue),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            report.adminNotes!,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontStyle: FontStyle.italic),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                // Images
+                if ((report.imageUrls ?? []).isNotEmpty) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 90,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: widget.report.imageUrls!.length,
+                      itemCount: report.imageUrls!.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
-                        final url = widget.report.imageUrls![index];
+                        final url = report.imageUrls![index];
                         return ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: Image.network(
@@ -210,7 +344,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
           Expanded(
             child: StreamBuilder<List<ReportMessage>>(
               stream: _firestoreService.getReportMessagesStream(
-                widget.report.reportId,
+                report.reportId,
               ),
               builder: (context, snapshot) {
                 final messages = snapshot.data ?? [];
@@ -246,34 +380,70 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: const InputDecoration(
-                      hintText: 'Type a reply...',
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: const InputDecoration(
+                        hintText: 'Type a reply...',
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: _isSending
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                  onPressed: _isSending ? null : _sendMessage,
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: _isSending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send),
+                    onPressed: _isSending ? null : _sendMessage,
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  Color _statusColor(ReportStatus status) {
+    switch (status) {
+      case ReportStatus.pending:
+        return Colors.orange;
+      case ReportStatus.reviewed:
+        return Colors.blue;
+      case ReportStatus.resolved:
+        return Colors.green;
+      case ReportStatus.rejected:
+        return Colors.red;
+    }
+  }
+
+  String _formatDate(DateTime dt) =>
+      '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+
+  Widget _metaChip(BuildContext context, IconData icon, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon,
+            size: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }

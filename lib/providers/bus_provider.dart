@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/bus_model.dart';
 import '../services/firestore_service.dart';
@@ -9,6 +10,7 @@ class BusProvider extends ChangeNotifier {
   Bus? _selectedBus;
   bool _isLoading = false;
   String? _error;
+  StreamSubscription<List<Bus>>? _busesSubscription;
 
   List<Bus> get buses => _buses;
   Bus? get selectedBus => _selectedBus;
@@ -98,5 +100,36 @@ class BusProvider extends ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  /// Subscribe to real-time bus list updates. Call once from a screen's
+  /// initState that needs live sync (e.g. admin bus management).
+  void listenToBuses() {
+    _busesSubscription?.cancel();
+    _isLoading = true;
+    notifyListeners();
+    _busesSubscription = _firestoreService.getBusesStream().listen(
+      (buses) {
+        _buses = buses;
+        _isLoading = false;
+        notifyListeners();
+      },
+      onError: (e) {
+        _error = e.toString();
+        _isLoading = false;
+        notifyListeners();
+      },
+    );
+  }
+
+  void stopListeningToBuses() {
+    _busesSubscription?.cancel();
+    _busesSubscription = null;
+  }
+
+  @override
+  void dispose() {
+    _busesSubscription?.cancel();
+    super.dispose();
   }
 }

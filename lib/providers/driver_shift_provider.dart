@@ -118,12 +118,15 @@ class DriverShiftProvider extends ChangeNotifier {
 
     try {
       // Set bus as active
-      await FirebaseFirestore.instance
-          .collection('buses')
-          .doc(_assignedBus!.busId)
-          .update({
-        'isActive': true,
-      });
+      final activationError = await _firestoreService.setBusActiveStatus(
+        busId: _assignedBus!.busId,
+        isActive: true,
+      );
+      if (activationError != null) {
+        _error = activationError;
+        notifyListeners();
+        return false;
+      }
 
       // Store error messages from tracking service
       String? trackingError;
@@ -142,13 +145,17 @@ class DriverShiftProvider extends ChangeNotifier {
       // Check if tracking started successfully
       if (trackingError != null) {
         // Revert bus to inactive if tracking failed
-        await FirebaseFirestore.instance
-            .collection('buses')
-            .doc(_assignedBus!.busId)
-            .update({'isActive': false});
+        await _firestoreService.setBusActiveStatus(
+          busId: _assignedBus!.busId,
+          isActive: false,
+        );
         return false;
       }
 
+      _assignedBus = _assignedBus!.copyWith(
+        isActive: true,
+        lastUpdated: DateTime.now(),
+      );
       _isOnShift = true;
       _error = null;
       notifyListeners();
@@ -157,10 +164,10 @@ class DriverShiftProvider extends ChangeNotifier {
       _error = 'Failed to start shift: $e';
       // Ensure bus is inactive if shift start failed
       try {
-        await FirebaseFirestore.instance
-            .collection('buses')
-            .doc(_assignedBus!.busId)
-            .update({'isActive': false});
+        await _firestoreService.setBusActiveStatus(
+          busId: _assignedBus!.busId,
+          isActive: false,
+        );
       } catch (_) {}
       notifyListeners();
       return false;
@@ -169,29 +176,54 @@ class DriverShiftProvider extends ChangeNotifier {
 
   /// End shift - stops GPS tracking
   Future<void> endShift() async {
-    if (!_isOnShift || _assignedBus == null) return;
+    if (_assignedBus == null) return;
 
     try {
       // Stop GPS tracking first
-      _trackingService.stopTracking();
+      if (_trackingService.isTracking) {
+        _trackingService.stopTracking();
+      }
       
       // Give time for cleanup
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // Set bus as inactive
-      await FirebaseFirestore.instance
-          .collection('buses')
-          .doc(_assignedBus!.busId)
-          .update({
-        'isActive': false,
-      });
+      // Set bus offline and reset occupancy
+      String? deactivationError;
+      try {
+        await FirebaseFirestore.instance
+            .collection('buses')
+            .doc(_assignedBus!.busId)
+            .update({
+          'isActive': false,
+          'currentOccupancy': 0,
+          'lastUpdated': DateTime.now().toIso8601String(),
+        });
+      } catch (e) {
+        deactivationError = 'Error updating bus status: $e';
+      }
+
+      if (deactivationError != null) {
+        _error = deactivationError;
+      }
+
+      _assignedBus = _assignedBus!.copyWith(
+        isActive: false,
+        currentOccupancy: 0,
+        lastUpdated: DateTime.now(),
+      );
 
       _isOnShift = false;
-      _error = null;
+      if (deactivationError == null) {
+        _error = null;
+      }
       notifyListeners();
     } catch (e) {
       _error = 'Failed to end shift: $e';
-      // Even if Firebase update fails, mark shift as ended locally
+      _assignedBus = _assignedBus!.copyWith(
+        isActive: false,
+        currentOccupancy: 0,
+        lastUpdated: DateTime.now(),
+      );
       _isOnShift = false;
       notifyListeners();
     }

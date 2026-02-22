@@ -70,7 +70,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Navigator.pop(context);
       }
     } else {
-      _showMessage('Failed to update profile', isError: true);
+      final errorText = (authProvider.error ?? '').toLowerCase();
+      if (errorText.contains('unavailable') ||
+          errorText.contains('network') ||
+          errorText.contains('keepalive') ||
+          errorText.contains('connection')) {
+        _showMessage(
+          'Connection is unstable. Please wait a moment and tap Save Changes again.',
+          isError: true,
+        );
+      } else {
+        _showMessage('Failed to update profile', isError: true);
+      }
     }
   }
 
@@ -196,6 +207,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
               ),
             ),
+            if (_isLoading) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Saving changes... If this takes more than a few seconds, your network may be unstable.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey.shade600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
             const SizedBox(height: 32),
             const Divider(),
             const SizedBox(height: 16),

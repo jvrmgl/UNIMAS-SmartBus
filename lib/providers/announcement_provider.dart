@@ -9,9 +9,24 @@ class AnnouncementProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  final Map<String, Set<String>> _clearedByRole = {};
+
+  Set<String> _roleSet(String role) =>
+      _clearedByRole.putIfAbsent(role, () => {});
+
   List<Announcement> get announcements => _announcements;
+  List<Announcement> visibleAnnouncementsFor(String role) => _announcements
+      .where((a) => !_roleSet(role).contains(a.announcementId))
+      .toList();
+  bool hasVisibleAnnouncementsFor(String role) =>
+      visibleAnnouncementsFor(role).isNotEmpty;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  void clearAnnouncementsFor(String role) {
+    _roleSet(role).addAll(_announcements.map((a) => a.announcementId));
+    notifyListeners();
+  }
 
   Future<void> fetchAnnouncements() async {
     _isLoading = true;
