@@ -10,6 +10,7 @@ import '../../providers/announcement_provider.dart';
 import '../../providers/driver_shift_provider.dart';
 import '../../models/bus_stop_model.dart';
 import '../../services/location_service.dart';
+import '../../utils/map_marker_helper.dart';
 
 class DriverMapScreen extends StatefulWidget {
   const DriverMapScreen({super.key});
@@ -20,12 +21,28 @@ class DriverMapScreen extends StatefulWidget {
 
 class _DriverMapScreenState extends State<DriverMapScreen> {
   final Completer<GoogleMapController> _mapController = Completer<GoogleMapController>();
+  BitmapDescriptor? _busMarkerIcon;
+  BitmapDescriptor? _busInactiveMarkerIcon;
+  BitmapDescriptor? _stopMarkerIcon;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
+      _loadMarkerIcons();
+    });
+  }
+
+  Future<void> _loadMarkerIcons() async {
+    final bus      = await MapMarkerHelper.getBusMarker();
+    final inactive = await MapMarkerHelper.getBusInactiveMarker();
+    final stop     = await MapMarkerHelper.getStopMarker();
+    if (!mounted) return;
+    setState(() {
+      _busMarkerIcon         = bus;
+      _busInactiveMarkerIcon = inactive;
+      _stopMarkerIcon        = stop;
     });
   }
 
@@ -154,9 +171,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             title: bus.busNumber,
             snippet: 'Occupancy: ${bus.currentOccupancy}/${bus.capacity}',
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueBlue,
-          ),
+          icon: (bus.isActive ? _busMarkerIcon : _busInactiveMarkerIcon) ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         ),
       );
     }
@@ -170,9 +186,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             title: stop.stopName,
             snippet: 'Bus Stop',
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueRed,
-          ),
+          icon: _stopMarkerIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
       );
     }

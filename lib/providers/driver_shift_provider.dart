@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/bus_model.dart';
@@ -13,12 +14,25 @@ class DriverShiftProvider extends ChangeNotifier {
   bool _isOnShift = false;
   String? _error;
   String? _driverUid;
+  StreamSubscription<Bus?>? _assignedBusSubscription;
 
   Bus? get assignedBus => _assignedBus;
   bool get isOnShift => _isOnShift;
   bool get isTracking => _trackingService.isTracking;
   String? get error => _error;
   bool get hasAssignedBus => _assignedBus != null;
+
+  /// Subscribe to real-time updates for the assigned bus.
+  void _subscribeToBus(String busId) {
+    _assignedBusSubscription?.cancel();
+    _assignedBusSubscription =
+        _firestoreService.getBusStream(busId).listen((bus) {
+      if (bus != null) {
+        _assignedBus = bus;
+        notifyListeners();
+      }
+    });
+  }
 
   /// Initialize driver with their UID
   void setDriverUid(String uid) {
@@ -36,6 +50,7 @@ class DriverShiftProvider extends ChangeNotifier {
       
       if (assigned != null) {
         _assignedBus = assigned;
+        _subscribeToBus(assigned.busId); // live updates
         notifyListeners();
       }
     } catch (e) {
@@ -69,6 +84,7 @@ class DriverShiftProvider extends ChangeNotifier {
         driverId: _driverUid,
         driverName: driverName,
       );
+      _subscribeToBus(bus.busId); // live updates
       notifyListeners();
       return true;
     } catch (e) {
@@ -81,6 +97,8 @@ class DriverShiftProvider extends ChangeNotifier {
   /// Release current bus assignment
   Future<void> releaseBus() async {
     if (_assignedBus == null) return;
+    _assignedBusSubscription?.cancel();
+    _assignedBusSubscription = null;
 
     if (_isOnShift) {
       await endShift();
@@ -187,17 +205,20 @@ class DriverShiftProvider extends ChangeNotifier {
       // Give time for cleanup
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // Set bus offline and reset occupancy
+      // Set bus offline, reset occupancy and clear any stranded student sessions
       String? deactivationError;
       try {
-        await FirebaseFirestore.instance
-            .collection('buses')
-            .doc(_assignedBus!.busId)
-            .update({
-          'isActive': false,
-          'currentOccupancy': 0,
-          'lastUpdated': DateTime.now().toIso8601String(),
-        });
+        await Future.wait([
+          FirebaseFirestore.instance
+              .collection('buses')
+              .doc(_assignedBus!.busId)
+              .update({
+            'isActive': false,
+            'currentOccupancy': 0,
+            'lastUpdated': DateTime.now().toIso8601String(),
+          }),
+          _firestoreService.clearBusActiveSessions(_assignedBus!.busId),
+        ]);
       } catch (e) {
         deactivationError = 'Error updating bus status: $e';
       }
@@ -229,6 +250,25 @@ class DriverShiftProvider extends ChangeNotifier {
     }
   }
 
+  /// Optimistically update occupancy locally and write to Firestore.
+  /// The live stream will reconcile with the server value.
+  Future<void> adjustOccupancy(int newOccupancy) async {
+    if (_assignedBus == null) return;
+    // Optimistic local update — instant UI response
+    _assignedBus = _assignedBus!.copyWith(currentOccupancy: newOccupancy);
+    notifyListeners();
+    // Background Firestore write
+    try {
+      await _firestoreService.updateBusOccupancy(
+        busId: _assignedBus!.busId,
+        currentOccupancy: newOccupancy,
+      );
+    } catch (e) {
+      _error = 'Failed to update occupancy: $e';
+      notifyListeners();
+    }
+  }
+
   /// Refresh assigned bus data
   Future<void> refreshBusData() async {
     if (_assignedBus == null) return;
@@ -256,6 +296,7 @@ class DriverShiftProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _assignedBusSubscription?.cancel();
     _trackingService.dispose();
     super.dispose();
   }

@@ -7,6 +7,7 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../constants/app_theme.dart';
 import '../../models/bus_stop_model.dart';
+import '../../services/notification_service.dart';
 import '../../widgets/slide_button.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
@@ -30,10 +31,15 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       // Initialize driver
       if (authProvider.currentUser != null) {
         shiftProvider.setDriverUid(authProvider.currentUser!.uid);
+        // Save driver FCM token keyed by userId so the shift-reminder
+        // Cloud Function can target this device by driverId.
+        NotificationService().saveDeviceToken(
+          userId: authProvider.currentUser!.uid,
+        );
       }
       
       context.read<AnnouncementProvider>().fetchAnnouncements();
-      context.read<BusProvider>().fetchBuses();
+      context.read<BusProvider>().listenToBuses(); // real-time stream
       context.read<RouteProvider>().fetchRoutes();
       context.read<RouteProvider>().fetchBusStops();
     });
@@ -751,12 +757,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       return;
     }
     
-    final busProvider = context.read<BusProvider>();
-    await busProvider.updateBusOccupancy(
-      busId: bus.busId,
-      occupancy: newOccupancy,
-    );
-    await shiftProvider.refreshBusData();
+    await shiftProvider.adjustOccupancy(newOccupancy);
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -773,12 +774,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     final bus = shiftProvider.assignedBus!;
     final newOccupancy = (bus.currentOccupancy - 1).clamp(0, bus.capacity);
     
-    final busProvider = context.read<BusProvider>();
-    await busProvider.updateBusOccupancy(
-      busId: bus.busId,
-      occupancy: newOccupancy,
-    );
-    await shiftProvider.refreshBusData();
+    await shiftProvider.adjustOccupancy(newOccupancy);
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

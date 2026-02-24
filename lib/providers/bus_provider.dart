@@ -102,6 +102,16 @@ class BusProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Directly replace the matching bus in the cached list with [updatedBus].
+  /// Useful for optimistic/immediate UI updates (e.g. after tap-in/out).
+  void updateBusInList(Bus updatedBus) {
+    final index = _buses.indexWhere((b) => b.busId == updatedBus.busId);
+    if (index != -1) {
+      _buses[index] = updatedBus;
+      notifyListeners();
+    }
+  }
+
   /// Subscribe to real-time bus list updates. Call once from a screen's
   /// initState that needs live sync (e.g. admin bus management).
   void listenToBuses() {

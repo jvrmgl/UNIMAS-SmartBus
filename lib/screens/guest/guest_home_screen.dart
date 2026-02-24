@@ -41,6 +41,10 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
       setState(() => _currentIndex = 1);
       nav.consumeHomeSwitch();
     }
+    if (nav.shouldSwitchToMap && mounted) {
+      setState(() => _currentIndex = 0);
+      nav.consumeMapSwitch();
+    }
   }
 
   @override

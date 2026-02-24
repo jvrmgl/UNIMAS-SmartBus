@@ -174,3 +174,202 @@ exports.resendAnnouncementNotification = functions
       throw new functions.https.HttpsError('internal', 'Failed to resend notification: ' + error.message);
     }
   });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SMART NOTIFICATION HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Haversine distance in kilometres between two lat/lon points. */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (v) => (v * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Send an FCM message to a single device token. Returns true on success. */
+async function sendToToken(fcmToken, title, body, data = {}) {
+  try {
+    await admin.messaging().send({
+      token: fcmToken,
+      notification: { title, body },
+      android: {
+        priority: 'high',
+        notification: { channelId: 'bus_updates', sound: 'default' },
+      },
+      data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', ...data },
+    });
+    return true;
+  } catch (err) {
+    console.error('sendToToken error:', err.message);
+    return false;
+  }
+}
+
+// ── 1. Approaching-bus notifications ─────────────────────────────────────────
+// Runs every 2 minutes. For each student waiting at a stop, checks if any
+// active bus is within 500 m. If so, sends an FCM push and marks the
+// waiting_students record as 'notified' to avoid repeated alerts.
+exports.checkApproachingBuses = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 2 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const [busesSnap, waitingSnap] = await Promise.all([
+      admin.firestore().collection('buses').where('isActive', '==', true).get(),
+      admin.firestore()
+        .collection('waiting_students')
+        .where('status', '==', 'waiting')
+        .get(),
+    ]);
+
+    if (waitingSnap.empty || busesSnap.empty) return null;
+
+    const buses = busesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+    for (const waitDoc of waitingSnap.docs) {
+      const w = waitDoc.data();
+      if (!w.fcmToken) continue;
+
+      // Don't spam – only notify once per 10 minutes per student
+      if (w.notifiedAt && w.notifiedAt.toDate() > tenMinAgo) continue;
+
+      for (const bus of buses) {
+        if (!bus.latitude || !bus.longitude) continue;
+        const dist = haversineKm(w.latitude, w.longitude, bus.latitude, bus.longitude);
+        if (dist <= 0.5) {
+          const ok = await sendToToken(
+            w.fcmToken,
+            '🚌 Bus is approaching!',
+            `Bus ${bus.busNumber} (${bus.registrationNumber}) is approaching ${w.stopName}`,
+            { type: 'bus_approaching', busId: bus.id }
+          );
+          if (ok) {
+            await waitDoc.ref.update({
+              status: 'notified',
+              notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+          break; // Only first matching bus per student per cycle
+        }
+      }
+    }
+    return null;
+  });
+
+// ── 2. Tap-out reminders ──────────────────────────────────────────────────────
+// Runs every 5 minutes. Finds active device_bus_sessions that started more
+// than 30 minutes ago and sends a reminder FCM. Rate-limited to once per
+// 10 minutes per session.
+exports.sendTapOutReminders = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 5 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const tenMinAgo   = new Date(Date.now() - 10 * 60 * 1000);
+
+    const snap = await admin.firestore()
+      .collection('device_bus_sessions')
+      .where('status', '==', 'active')
+      .where('tappedInAt', '<=', thirtyMinAgo)
+      .get();
+
+    for (const doc of snap.docs) {
+      const session = doc.data();
+
+      // Don't spam
+      if (session.lastReminderSentAt &&
+          session.lastReminderSentAt.toDate() > tenMinAgo) continue;
+
+      // Fetch device token
+      const tokenDoc = await admin.firestore()
+        .collection('device_tokens')
+        .doc(session.deviceId)
+        .get();
+      if (!tokenDoc.exists || !tokenDoc.data().fcmToken) continue;
+
+      const elapsedMin = Math.round(
+        (Date.now() - session.tappedInAt.toMillis()) / 60000
+      );
+      const ok = await sendToToken(
+        tokenDoc.data().fcmToken,
+        '⏰ Still on the bus?',
+        `You've been on the bus for ${elapsedMin} minutes. Tap out when you arrive!`,
+        { type: 'tap_out_reminder', busId: session.busId }
+      );
+      if (ok) {
+        await doc.ref.update({
+          lastReminderSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+    return null;
+  });
+
+// ── 3. Driver shift-end reminders ─────────────────────────────────────────────
+// Runs every 10 minutes. If an active bus has had no GPS update for > 1 hour,
+// sends a reminder to the assigned driver to end their shift.
+// Rate-limited to once per 30 minutes per bus.
+exports.sendDriverShiftReminders = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 10 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const oneHourAgo    = new Date(Date.now() - 60 * 60 * 1000);
+    const thirtyMinAgo  = new Date(Date.now() - 30 * 60 * 1000);
+
+    const snap = await admin.firestore()
+      .collection('buses')
+      .where('isActive', '==', true)
+      .get();
+
+    for (const doc of snap.docs) {
+      const bus = doc.data();
+      if (!bus.driverId) continue;
+
+      // Parse lastUpdated (stored as ISO string or Timestamp)
+      let lastUpdated;
+      if (bus.lastUpdated && typeof bus.lastUpdated.toDate === 'function') {
+        lastUpdated = bus.lastUpdated.toDate();
+      } else if (bus.lastUpdated) {
+        lastUpdated = new Date(bus.lastUpdated);
+      } else {
+        continue;
+      }
+      if (lastUpdated > oneHourAgo) continue; // Updated recently – ok
+
+      // Rate-limit
+      if (bus.lastShiftReminderAt) {
+        const last = typeof bus.lastShiftReminderAt.toDate === 'function'
+          ? bus.lastShiftReminderAt.toDate()
+          : new Date(bus.lastShiftReminderAt);
+        if (last > thirtyMinAgo) continue;
+      }
+
+      // Fetch driver FCM token (saved under their userId in device_tokens)
+      const tokenDoc = await admin.firestore()
+        .collection('device_tokens')
+        .doc(bus.driverId)
+        .get();
+      if (!tokenDoc.exists || !tokenDoc.data().fcmToken) continue;
+
+      const ok = await sendToToken(
+        tokenDoc.data().fcmToken,
+        '🚌 Did you forget to end your shift?',
+        `Bus ${bus.busNumber} has been active with no GPS update for over an hour. Please end your shift if you are done.`,
+        { type: 'shift_reminder', busId: doc.id }
+      );
+      if (ok) {
+        await doc.ref.update({
+          lastShiftReminderAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+    return null;
+  });

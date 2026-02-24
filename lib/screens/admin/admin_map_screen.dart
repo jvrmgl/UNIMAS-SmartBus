@@ -1,13 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../../constants/app_constants.dart';
+import '../../constants/app_theme.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../models/bus_model.dart';
+import '../../models/route_model.dart';
 import '../../models/report_model.dart';
 import '../../services/firestore_service.dart';
-import 'analytics_screen.dart';
+import '../../services/location_service.dart';
+import '../../utils/map_marker_helper.dart';
 
 class AdminMapScreen extends StatefulWidget {
   const AdminMapScreen({super.key});
@@ -18,13 +25,48 @@ class AdminMapScreen extends StatefulWidget {
 
 class _AdminMapScreenState extends State<AdminMapScreen> {
   final FirestoreService _firestoreService = FirestoreService();
+  final Completer<GoogleMapController> _mapController =
+      Completer<GoogleMapController>();
+  Set<Polyline> _highlightedPolylines = {};
+  BusRoute? _selectedRoute;
+  BitmapDescriptor? _busMarkerIcon;
+  BitmapDescriptor? _busInactiveMarkerIcon;
+  BitmapDescriptor? _stopMarkerIcon;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
+      _loadMarkerIcons();
+      context.read<RouteProvider>().addListener(_onRouteProviderUpdate);
     });
+  }
+
+  Future<void> _loadMarkerIcons() async {
+    final bus      = await MapMarkerHelper.getBusMarker();
+    final inactive = await MapMarkerHelper.getBusInactiveMarker();
+    final stop     = await MapMarkerHelper.getStopMarker();
+    if (!mounted) return;
+    setState(() {
+      _busMarkerIcon         = bus;
+      _busInactiveMarkerIcon = inactive;
+      _stopMarkerIcon        = stop;
+    });
+  }
+
+  @override
+  void dispose() {
+    context.read<RouteProvider>().removeListener(_onRouteProviderUpdate);
+    super.dispose();
+  }
+
+  // Re-draw the polyline whenever RouteProvider notifies (e.g. after a stop
+  // location is updated and fetchBusStops() refreshes the coordinates).
+  void _onRouteProviderUpdate() {
+    if (_selectedRoute != null) {
+      _highlightRoute(_selectedRoute!);
+    }
   }
 
   void _loadData() async {
@@ -36,6 +78,348 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     await routeProvider.fetchRoutes();
     await routeProvider.fetchBusStops();
     await announcementProvider.fetchAnnouncements();
+  }
+
+  // ── Animate camera to a specific bus ──────────────────────────────────────
+  Future<void> _animateToBus(Bus bus) async {
+    final ctrl = await _mapController.future;
+    ctrl.animateCamera(
+      CameraUpdate.newLatLngZoom(LatLng(bus.latitude, bus.longitude), 18),
+    );
+  }
+
+  // ── Highlight a route as a polyline on the map ────────────────────────────
+  Future<void> _highlightRoute(BusRoute route) async {
+    _selectedRoute = route;
+    final allStops = context.read<RouteProvider>().busStops;
+    final stopPoints = route.stopIds
+        .map((id) {
+          try {
+            return allStops.firstWhere((s) => s.stopId == id);
+          } catch (_) {
+            return null;
+          }
+        })
+        .where((s) => s != null)
+        .map((s) => LatLng(s!.latitude, s.longitude))
+        .toList();
+    if (stopPoints.isEmpty) return;
+
+    // Fetch road-following polyline via Directions API; fall back to straight lines
+    List<LatLng> points;
+    try {
+      points = await _fetchRoutePolyline(stopPoints);
+    } catch (_) {
+      points = stopPoints;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _highlightedPolylines = {
+        Polyline(
+          polylineId: const PolylineId('route_highlight'),
+          points: points,
+          color: AppTheme.primaryColor,
+          width: 5,
+          jointType: JointType.round,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+        ),
+      };
+    });
+
+    _mapController.future.then((ctrl) {
+      double minLat = stopPoints.fold(
+          stopPoints.first.latitude, (m, p) => p.latitude < m ? p.latitude : m);
+      double maxLat = stopPoints.fold(
+          stopPoints.first.latitude, (m, p) => p.latitude > m ? p.latitude : m);
+      double minLng = stopPoints.fold(
+          stopPoints.first.longitude, (m, p) => p.longitude < m ? p.longitude : m);
+      double maxLng = stopPoints.fold(
+          stopPoints.first.longitude, (m, p) => p.longitude > m ? p.longitude : m);
+      ctrl.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(minLat - 0.005, minLng - 0.005),
+            northeast: LatLng(maxLat + 0.005, maxLng + 0.005),
+          ),
+          60,
+        ),
+      );
+    });
+  }
+
+  Future<List<LatLng>> _fetchRoutePolyline(List<LatLng> stopPoints) async {
+    if (stopPoints.length < 2) return stopPoints;
+
+    final origin =
+        '${stopPoints.first.latitude},${stopPoints.first.longitude}';
+    final destination =
+        '${stopPoints.last.latitude},${stopPoints.last.longitude}';
+    final waypointList = stopPoints.length > 2
+        ? stopPoints
+            .sublist(1, stopPoints.length - 1)
+            .map((p) => '${p.latitude},${p.longitude}')
+            .join('|')
+        : null;
+
+    final params = <String, String>{
+      'origin': origin,
+      'destination': destination,
+      'mode': 'driving',
+      'key': AppConstants.googleMapsApiKey,
+      if (waypointList != null) 'waypoints': 'optimize:false|$waypointList',
+    };
+
+    final uri =
+        Uri.https('maps.googleapis.com', '/maps/api/directions/json', params);
+    final response =
+        await http.get(uri).timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) return stopPoints;
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (data['status'] != 'OK') return stopPoints;
+
+    final encoded =
+        data['routes'][0]['overview_polyline']['points'] as String;
+    return _decodePolyline(encoded);
+  }
+
+  List<LatLng> _decodePolyline(String encoded) {
+    final List<LatLng> points = [];
+    int index = 0;
+    final int len = encoded.length;
+    int lat = 0, lng = 0;
+    while (index < len) {
+      int shift = 0, result = 0, b;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lat += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lng += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      points.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+    return points;
+  }
+
+  Future<void> _goToCurrentLocation() async {
+    final position = await LocationService.getCurrentPosition();
+    if (position == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to get current location')),
+        );
+      }
+      return;
+    }
+    final controller = await _mapController.future;
+    controller.animateCamera(
+      CameraUpdate.newLatLngZoom(
+        LatLng(position.latitude, position.longitude),
+        16.0,
+      ),
+    );
+  }
+
+  // ── Bottom sheet: active buses list ───────────────────────────────────────
+  void _showActiveBusesSheet() {
+    final activeBuses = context
+        .read<BusProvider>()
+        .buses
+        .where((b) => b.isActive)
+        .toList();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.45,
+        maxChildSize: 0.85,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (_, scrollCtrl) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.directions_bus, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Active Buses (${activeBuses.length})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            if (activeBuses.isEmpty)
+              const Expanded(
+                child: Center(
+                  child: Text('No active buses',
+                      style: TextStyle(color: Colors.grey)),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollCtrl,
+                  itemCount: activeBuses.length,
+                  itemBuilder: (_, i) {
+                    final bus = activeBuses[i];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue,
+                        child: Text(
+                          bus.busNumber,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      title: Text('Bus ${bus.busNumber}'),
+                      subtitle: Text(
+                        '${bus.currentOccupancy}/${bus.capacity} seats'
+                        '${bus.driverName != null ? ' • ${bus.driverName}' : ''}',
+                      ),
+                      trailing:
+                          const Icon(Icons.location_on, color: Colors.blue),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _animateToBus(bus);
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Bottom sheet: routes list ─────────────────────────────────────────────
+  void _showRoutesSheet() {
+    final routes = context.read<RouteProvider>().routes;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.45,
+        maxChildSize: 0.85,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (_, scrollCtrl) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.route, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Routes (${routes.length})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const Spacer(),
+                  if (_highlightedPolylines.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _highlightedPolylines = {};
+                          _selectedRoute = null;
+                        });
+                        Navigator.pop(ctx);
+                      },
+                      icon: const Icon(Icons.clear, size: 16),
+                      label: const Text('Clear route'),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            if (routes.isEmpty)
+              const Expanded(
+                child: Center(
+                    child: Text('No routes',
+                        style: TextStyle(color: Colors.grey))),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollCtrl,
+                  itemCount: routes.length,
+                  itemBuilder: (_, i) {
+                    final route = routes[i];
+                    return ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          route.routeCode,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      title: Text(route.routeName),
+                      subtitle: Text('${route.stopIds.length} stops'),
+                      trailing:
+                          const Icon(Icons.polyline, color: Colors.green),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _highlightRoute(route);
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showNotificationsDialog() {
@@ -132,9 +516,8 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
             title: bus.busNumber,
             snippet: 'Occupancy: ${bus.currentOccupancy}/${bus.capacity}',
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueBlue,
-          ),
+          icon: (bus.isActive ? _busMarkerIcon : _busInactiveMarkerIcon) ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         ),
       );
     }
@@ -148,9 +531,8 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
             title: stop.stopName,
             snippet: 'Bus Stop',
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueRed,
-          ),
+          icon: _stopMarkerIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
       );
     }
@@ -163,32 +545,43 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     required String label,
     required String value,
     required Color color,
+    VoidCallback? onTap,
   }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (onTap != null)
+              Icon(Icons.keyboard_arrow_down,
+                  size: 12, color: Colors.grey[500]),
+          ],
         ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.grey[600],
-          ),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
+      ),
     );
   }
 
@@ -242,11 +635,41 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                   target: LatLng(1.4651, 110.4277),
                   zoom: AppConstants.defaultMapZoom,
                 ),
+                onMapCreated: (ctrl) {
+                  if (!_mapController.isCompleted) _mapController.complete(ctrl);
+                },
                 markers: markers,
+                polylines: _highlightedPolylines,
                 myLocationEnabled: true,
-                myLocationButtonEnabled: true,
+                myLocationButtonEnabled: false,
               );
             },
+          ),
+          // My Location FAB
+          Positioned(
+            right: 8,
+            bottom: 110,
+            child: Material(
+              elevation: 4,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: _goToCurrentLocation,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.my_location,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+              ),
+            ),
           ),
           Positioned(
             top: 16,
@@ -259,12 +682,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                 final totalBuses = busProvider.buses.length;
                 final totalRoutes = routeProvider.routes.length;
 
-                return InkWell(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
+                return Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -286,6 +704,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                             label: 'Active Buses',
                             value: '$activeBuses/$totalBuses',
                             color: Colors.blue,
+                            onTap: () => _showActiveBusesSheet(),
                           ),
                         ),
                         Expanded(
@@ -294,6 +713,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                             label: 'Routes',
                             value: totalRoutes.toString(),
                             color: Colors.green,
+                            onTap: () => _showRoutesSheet(),
                           ),
                         ),
                         Expanded(
@@ -330,8 +750,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                         ),
                       ],
                     ),
-                  ),
-                );
+                  );
               },
             ),
           ),

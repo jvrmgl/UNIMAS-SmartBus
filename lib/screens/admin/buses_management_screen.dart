@@ -5,6 +5,7 @@ import '../../providers/route_provider.dart';
 import '../../models/bus_model.dart';
 import '../../models/user_model.dart';
 import '../../services/firestore_service.dart';
+import 'bus_location_map_screen.dart';
 
 class BusesManagementScreen extends StatefulWidget {
   const BusesManagementScreen({super.key});
@@ -279,6 +280,24 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                                     horizontal: 12, vertical: 8),
                               ),
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    BusLocationMapScreen(bus: bus),
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.indigo),
+                              foregroundColor: Colors.indigo,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              minimumSize: const Size(0, 40),
+                            ),
+                            child: const Icon(Icons.map_outlined, size: 20),
                           ),
                         ],
                       ),
@@ -639,6 +658,34 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
 
   Future<void> _toggleBusStatus(Bus bus) async {
     final wasActive = bus.isActive;
+
+    // Guard: a bus may only be activated when it has both a driver and a route.
+    if (!wasActive) {
+      final missing = <String>[];
+      if (bus.driverId == null) missing.add('an assigned driver');
+      if (bus.assignedRoute == null) missing.add('an assigned route');
+      if (missing.isNotEmpty) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cannot activate bus'),
+            content: Text(
+              'This bus needs ${missing.join(' and ')} before it can be '
+              'activated. Please assign ${missing.length == 1 ? 'it' : 'them'} '
+              'first.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
 
     final error = await _firestoreService.setBusActiveStatus(
       busId: bus.busId,

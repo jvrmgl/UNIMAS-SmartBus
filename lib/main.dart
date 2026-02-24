@@ -17,7 +17,9 @@ import 'providers/dashboard_nav_provider.dart';
 import 'services/device_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/notification_service.dart';
+import 'providers/notification_prefs_provider.dart';
 import 'screens/auth/splash_screen.dart';
+import 'services/smart_notification_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/guest/guest_home_screen.dart';
@@ -53,6 +55,8 @@ Future<void> _initializeBackgroundServices() async {
 
     await notificationService.initializeNotifications();
     await notificationService.subscribeToBusAnnouncements();
+    // Save device FCM token so Cloud Functions can target this device
+    await notificationService.saveDeviceToken();
   } catch (_) {
     // Keep startup resilient even if optional background services fail.
   }
@@ -73,6 +77,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => DriverShiftProvider()),
         ChangeNotifierProvider(create: (_) => DashboardNavProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationPrefsProvider()),
+        ChangeNotifierProvider(create: (_) => SmartNotificationService()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
@@ -82,6 +88,18 @@ class MyApp extends StatelessWidget {
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.themeMode,
             debugShowCheckedModeBanner: false,
+            // Clamp system font scaling to 1.2× max — prevents extreme
+            // accessibility sizes from breaking fixed-height layouts while
+            // still honouring user font preferences up to 20% larger.
+            builder: (context, child) {
+              final mqData = MediaQuery.of(context);
+              return MediaQuery(
+                data: mqData.copyWith(
+                  textScaler: mqData.textScaler.clamp(maxScaleFactor: 1.2),
+                ),
+                child: child!,
+              );
+            },
             home: const SplashScreen(),
             routes: {
               '/splash': (context) => const SplashScreen(),

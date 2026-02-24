@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
@@ -28,6 +29,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirestoreService _firestoreService = FirestoreService();
+  DashboardNavProvider? _dashboardNavProvider;
+  int? _expandedStopIndex;
 
   @override
   void initState() {
@@ -37,12 +40,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     // Load initial data after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<BusProvider>().fetchBuses();
+      context.read<BusProvider>().listenToBuses(); // real-time stream
       context.read<RouteProvider>().fetchRoutes();
       context.read<RouteProvider>().fetchBusStops();
       context.read<AnnouncementProvider>().fetchAnnouncements();
-      // Listen for tab-switch requests from the map screen
-      context.read<DashboardNavProvider>().addListener(_onNavChange);
+      // Store ref before adding listener so dispose() can safely use it
+      _dashboardNavProvider = context.read<DashboardNavProvider>();
+      _dashboardNavProvider!.addListener(_onNavChange);
     });
   }
 
@@ -57,7 +61,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
 
   @override
   void dispose() {
-    context.read<DashboardNavProvider>().removeListener(_onNavChange);
+    _dashboardNavProvider?.removeListener(_onNavChange);
+    context.read<BusProvider>().stopListeningToBuses();
     _tabController.dispose();
     super.dispose();
   }
@@ -485,12 +490,18 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Occupancy: ${occupancyPercent.toStringAsFixed(1)}%',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w500),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.map_outlined, size: 16),
+                          label: const Text('View Bus on Map',
+                              style: TextStyle(fontSize: 12)),
+                          onPressed: () {
+                            context
+                                .read<DashboardNavProvider>()
+                                .navigateToMapWithFocus(
+                                    bus.latitude, bus.longitude);
+                          },
+                        ),
                       ),
                       TextButton(
                         onPressed: () => Navigator.of(context).push(
@@ -586,21 +597,22 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           );
         }
 
-        // Find closest bus stop to user
-        BusStop? nearestStop;
-        double? nearestStopKm;
+        // Find 3 closest bus stops to user
+        final List<({BusStop stop, double km})> top3Stops = [];
         final pos = locationProvider.currentPosition;
         if (pos != null && routeProvider.busStops.isNotEmpty) {
-          double minDist = double.infinity;
-          for (final s in routeProvider.busStops) {
-            final d = Geolocator.distanceBetween(
+          final sorted = [...routeProvider.busStops]..sort((a, b) {
+            final da = Geolocator.distanceBetween(
+                pos.latitude, pos.longitude, a.latitude, a.longitude);
+            final db = Geolocator.distanceBetween(
+                pos.latitude, pos.longitude, b.latitude, b.longitude);
+            return da.compareTo(db);
+          });
+          for (final s in sorted.take(3)) {
+            final km = Geolocator.distanceBetween(
                     pos.latitude, pos.longitude, s.latitude, s.longitude) /
                 1000;
-            if (d < minDist) {
-              minDist = d;
-              nearestStop = s;
-              nearestStopKm = minDist;
-            }
+            top3Stops.add((stop: s, km: km));
           }
         }
 
@@ -645,6 +657,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
 
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
+            clipBehavior: Clip.hardEdge,
             child: ExpansionTile(
               leading: Container(
                 padding: const EdgeInsets.all(8),
@@ -714,8 +727,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // ── Stop near you ─────────────────────────────────────────
-            if (nearestStop != null) ...[
+            // ── Stops Near You ────────────────────────────────────────
+            if (top3Stops.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -723,7 +736,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                     Icon(Icons.near_me, size: 16, color: AppTheme.primaryColor),
                     const SizedBox(width: 6),
                     Text(
-                      'Stop near you',
+                      'Stops Near You',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             color: AppTheme.primaryColor,
                             fontWeight: FontWeight.bold,
@@ -732,37 +745,51 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                   ],
                 ),
               ),
-              Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppTheme.primaryColor,
-                    child: const Icon(Icons.bus_alert,
-                        color: Colors.white, size: 20),
-                  ),
-                  title: Text(nearestStop.stopName,
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(
-                      '${nearestStop.stopCode} • ${nearestStopKm!.toStringAsFixed(1)} km away'),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      nearestStop.stopCode,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.primaryColor,
-                        fontWeight: FontWeight.w600,
+              ...top3Stops.asMap().entries.map((e) {
+                final i = e.key;
+                final entry = e.value;
+                return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    clipBehavior: Clip.hardEdge,
+                    child: ExpansionTile(
+                      key: ValueKey(
+                          _expandedStopIndex == i ? 'open_$i' : 'closed_$i'),
+                      initiallyExpanded: _expandedStopIndex == i,
+                      onExpansionChanged: (expanded) {
+                        setState(() {
+                          _expandedStopIndex = expanded ? i : null;
+                        });
+                      },
+                      leading: CircleAvatar(
+                        backgroundColor: AppTheme.primaryColor,
+                        child: const Icon(Icons.bus_alert,
+                            color: Colors.white, size: 20),
                       ),
+                      title: Text(entry.stop.stopName,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(
+                          '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.navigation, size: 18),
+                              label: const Text('Guide Me There'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryColor,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () => _guideMeThere(entry.stop),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-              ),
+                  );
+              }),
               const Divider(),
               const SizedBox(height: 4),
             ],
@@ -952,6 +979,24 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     final latDiff = lat1 - lat2;
     final lonDiff = lon1 - lon2;
     return (latDiff * latDiff + lonDiff * lonDiff);
+  }
+
+  Future<void> _guideMeThere(BusStop stop) async {
+    final lat = stop.latitude;
+    final lng = stop.longitude;
+    final name = Uri.encodeComponent(stop.stopName);
+    // geo: URI — Android shows a chooser (Google Maps, Waze, etc.)
+    final geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng($name)');
+    try {
+      await launchUrl(geoUri);
+      return;
+    } catch (_) {
+      // No app handles geo: — fall through to web fallback
+    }
+    // Fallback: Google Maps web
+    final webUri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    await launchUrl(webUri, mode: LaunchMode.externalApplication);
   }
 
   Widget _buildAnnouncementsTab() {

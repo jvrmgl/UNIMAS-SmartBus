@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import '../../models/bus_model.dart';
 import '../../models/route_model.dart';
 import '../../models/bus_stop_model.dart';
+import '../../providers/bus_provider.dart';
+import '../../providers/location_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../services/firestore_service.dart';
+import '../../services/smart_notification_service.dart';
 import '../../constants/app_theme.dart';
 import 'dart:math' show sin, cos, sqrt, asin;
 
@@ -93,7 +97,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Bus ${widget.bus.busNumber}'),
+        title: const Text('Bus Details'),
         elevation: 0,
       ),
       body: StreamBuilder<Bus?>(
@@ -452,6 +456,43 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       return;
     }
 
+    // ── Distance warning ───────────────────────────────────────────────────
+    final position = context.read<LocationProvider>().currentPosition;
+    if (position != null) {
+      final distKm = Geolocator.distanceBetween(
+            position.latitude,
+            position.longitude,
+            bus.latitude,
+            bus.longitude,
+          ) /
+          1000;
+      if (distKm > 1.0) {
+        if (!mounted) return;
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Bus is far away'),
+            content: Text(
+              'This bus is ${distKm.toStringAsFixed(1)} km from your current '
+              'location. Are you sure you want to board?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Board anyway'),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     print('DEBUG: Setting _isUpdating to true');
     setState(() => _isUpdating = true);
 
@@ -493,6 +534,17 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
         _isUpdating = false;
         _isTappedIn = true;
       });
+      // Student is now on the bus — cancel any waiting-at-stop record
+      if (mounted) {
+        context.read<SmartNotificationService>().cancelWaiting();
+      }
+      // Push the updated occupancy directly into BusProvider so the
+      // dashboard refreshes instantly without waiting for the stream.
+      if (mounted) {
+        context.read<BusProvider>().updateBusInList(
+          bus.copyWith(currentOccupancy: bus.currentOccupancy + 1),
+        );
+      }
       print('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
       _showMessage('Tapped in successfully!');
     } else {
@@ -512,20 +564,18 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       return;
     }
     
-    if (bus.currentOccupancy <= 0) {
-      _showMessage('Occupancy cannot be negative');
-      return;
-    }
-
     print('DEBUG: Setting _isUpdating to true');
     setState(() => _isUpdating = true);
+
+    // Clamp to 0 — occupancy may already be 0 if driver ended shift early
+    final newOccupancy = (bus.currentOccupancy - 1).clamp(0, bus.capacity);
 
     print('DEBUG: Updating bus location...');
     final busUpdateResult = await _firestoreService.updateBusLocation(
       busId: bus.busId,
       latitude: bus.latitude,
       longitude: bus.longitude,
-      currentOccupancy: bus.currentOccupancy - 1,
+      currentOccupancy: newOccupancy,
     );
 
     if (!mounted) return;
@@ -533,8 +583,13 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     if (busUpdateResult == null) {
       print('DEBUG: Bus update successful, tapping out from session');
       final tapOutResult = await _firestoreService.tapOutFromBus(_deviceId!);
-      
-      if (tapOutResult == null) {
+
+      // Treat "no active session" as success — the session may have been
+      // cleared already when the driver ended their shift.
+      final sessionCleared =
+          tapOutResult == null || tapOutResult.contains('No active session');
+
+      if (sessionCleared) {
         print('DEBUG: Tap out successful');
         
         // Complete student trip
@@ -545,6 +600,13 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
           _isUpdating = false;
           _isTappedIn = false;
         });
+        // Push the updated occupancy directly into BusProvider so the
+        // dashboard refreshes instantly without waiting for the stream.
+        if (mounted) {
+          context.read<BusProvider>().updateBusInList(
+            bus.copyWith(currentOccupancy: newOccupancy),
+          );
+        }
         print('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
         _showMessage('Tapped out successfully!');
       } else {

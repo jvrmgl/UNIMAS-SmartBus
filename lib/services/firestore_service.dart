@@ -953,6 +953,31 @@ class FirestoreService {
     }
   }
 
+  // Close all active device sessions for a specific bus (called when driver ends shift)
+  Future<void> clearBusActiveSessions(String busId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('device_bus_sessions')
+          .where('busId', isEqualTo: busId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.update(doc.reference, {
+          'status': 'completed',
+          'tappedOutAt': FieldValue.serverTimestamp(),
+          'closedByShiftEnd': true,
+        });
+      }
+      if (snapshot.docs.isNotEmpty) {
+        await batch.commit();
+      }
+    } catch (e) {
+      print('Error clearing bus sessions: $e');
+    }
+  }
+
   // Stream device's active bus session
   Stream<String?> streamDeviceActiveBusId(String deviceId) {
     return _firestore

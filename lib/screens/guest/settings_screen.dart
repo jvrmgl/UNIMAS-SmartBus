@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../providers/notification_prefs_provider.dart';
+import '../../services/smart_notification_service.dart';
 import '../../models/user_model.dart';
 import '../../providers/theme_provider.dart';
 import '../../constants/app_theme.dart';
@@ -21,8 +23,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _isAwaitingRoleRouting = false;
   bool _isLoginExpanded = false;
-  bool _serviceAlerts = true;
-  bool _busUpdates = true;
 
   @override
   void initState() {
@@ -33,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AuthProvider>().addListener(_onAuthProviderChanged);
       context.read<AnnouncementProvider>().fetchAnnouncements();
+      context.read<NotificationPrefsProvider>().load();
     });
   }
 
@@ -90,13 +91,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _handleLogout() async {
     final authProvider = context.read<AuthProvider>();
+    // Capture navigator before the async gap to avoid using a
+    // deactivated context after signOut completes.
+    final nav = Navigator.of(context);
     await authProvider.signOut();
-    if (mounted) {
-      _showMessage('Logged out');
-      _emailController.clear();
-      _passwordController.clear();
-      Navigator.of(context).pushNamedAndRemoveUntil('/guest', (route) => false);
-    }
+    _emailController.clear();
+    _passwordController.clear();
+    nav.pushNamedAndRemoveUntil('/guest', (route) => false);
+  }
+
+  Widget _buildNotificationSettings({required bool isDriver}) {
+    return Consumer<NotificationPrefsProvider>(
+      builder: (context, prefs, _) => Card(
+        clipBehavior: Clip.hardEdge,
+        child: ExpansionTile(
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.notifications_active,
+                color: Colors.white, size: 20),
+          ),
+          title: const Text('Smart Notifications',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: const Text('Push alerts & auto-detect preferences'),
+          children: [
+            const Divider(height: 1),
+            SwitchListTile(
+              title: const Text('Bus approaching'),
+              subtitle: const Text(
+                  'Alert when a bus nears your stop while you are waiting'),
+              secondary: const Icon(Icons.directions_bus),
+              value: prefs.busApproaching,
+              onChanged: prefs.setBusApproaching,
+            ),
+            const Divider(height: 1),
+            SwitchListTile(
+              title: const Text('Tap-out reminder'),
+              subtitle:
+                  const Text('Remind me to tap out after 30 minutes on a bus'),
+              secondary: const Icon(Icons.logout),
+              value: prefs.tapOutReminder,
+              onChanged: prefs.setTapOutReminder,
+            ),
+            const Divider(height: 1),
+            SwitchListTile(
+              title: const Text('Auto-detect waiting'),
+              subtitle: const Text(
+                  'Automatically mark me as waiting if I stay near a stop for '
+                  '${SmartNotificationService.waitConfirmMinutes}+ minutes'),
+              secondary: const Icon(Icons.access_time),
+              value: prefs.autoDetectWaiting,
+              onChanged: prefs.setAutoDetectWaiting,
+            ),
+            if (isDriver) ...[
+              const Divider(height: 1),
+              SwitchListTile(
+                title: const Text('Shift-end reminder'),
+                subtitle: const Text(
+                    'Remind me to end my shift if no GPS update for 1 hour'),
+                secondary: const Icon(Icons.timer_off),
+                value: prefs.driverShiftReminder,
+                onChanged: prefs.setDriverShiftReminder,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   void _showMessage(String message) {
@@ -232,33 +296,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _buildSectionTitle('Notifications'),
-                Card(
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        title: const Text('Service alerts'),
-                        subtitle: const Text('Delays, closures, announcements'),
-                        value: _serviceAlerts,
-                        onChanged: (value) {
-                          setState(() {
-                            _serviceAlerts = value;
-                          });
-                        },
-                      ),
-                      const Divider(height: 1),
-                      SwitchListTile(
-                        title: const Text('Bus updates'),
-                        subtitle: const Text('Nearby buses and stops'),
-                        value: _busUpdates,
-                        onChanged: (value) {
-                          setState(() {
-                            _busUpdates = value;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
+                _buildNotificationSettings(
+                  isDriver: authProvider.currentUser?.role == UserRole.driver,
                 ),
                 const SizedBox(height: 24),
                 _buildSectionTitle('Appearance'),
@@ -332,15 +371,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _handleLogout,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text(
-                    'Logout',
-                    style: TextStyle(color: Colors.white),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _handleLogout,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text(
+                      'Logout',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -352,34 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionTitle('Notifications'),
-                  Card(
-                    child: Column(
-                      children: [
-                        SwitchListTile(
-                          title: const Text('Service alerts'),
-                          subtitle: const Text('Delays, closures, announcements'),
-                          value: _serviceAlerts,
-                          onChanged: (value) {
-                            setState(() {
-                              _serviceAlerts = value;
-                            });
-                          },
-                        ),
-                        const Divider(height: 1),
-                        SwitchListTile(
-                          title: const Text('Bus updates'),
-                          subtitle: const Text('Nearby buses and stops'),
-                          value: _busUpdates,
-                          onChanged: (value) {
-                            setState(() {
-                              _busUpdates = value;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildNotificationSettings(isDriver: false),
                   const SizedBox(height: 24),
                   _buildSectionTitle('Appearance'),
                   Card(

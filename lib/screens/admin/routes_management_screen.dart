@@ -133,6 +133,7 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
+                clipBehavior: Clip.hardEdge,
                 child: Column(
                   children: [
                     ListTile(
