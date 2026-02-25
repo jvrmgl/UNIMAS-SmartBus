@@ -37,7 +37,6 @@ class LocationService {
         desiredAccuracy: LocationAccuracy.best,
       );
     } catch (e) {
-      print('Error getting current position: $e');
       return null;
     }
   }

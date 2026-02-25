@@ -23,15 +23,51 @@ class DriverShiftProvider extends ChangeNotifier {
   bool get hasAssignedBus => _assignedBus != null;
 
   /// Subscribe to real-time updates for the assigned bus.
+  /// Automatically starts/ends the shift when an admin remotely
+  /// activates or deactivates the bus.
   void _subscribeToBus(String busId) {
     _assignedBusSubscription?.cancel();
     _assignedBusSubscription =
         _firestoreService.getBusStream(busId).listen((bus) {
-      if (bus != null) {
-        _assignedBus = bus;
-        notifyListeners();
+      if (bus == null) return;
+
+      final wasActive = _assignedBus?.isActive ?? false;
+      _assignedBus = bus;
+      notifyListeners();
+
+      // Admin activated the bus → auto-start tracking
+      if (bus.isActive && !wasActive && !_isOnShift) {
+        _autoStartShift();
+      }
+      // Admin deactivated the bus → auto-end tracking
+      if (!bus.isActive && wasActive && _isOnShift) {
+        endShift();
       }
     });
+  }
+
+  /// Called when the admin remotely activates this driver's bus.
+  /// Starts GPS tracking and marks the shift as active without
+  /// calling setBusActiveStatus (it's already true in Firestore).
+  /// Guards against racing with the driver's own [startShift] call.
+  Future<void> _autoStartShift() async {
+    if (_assignedBus == null || _isOnShift || _trackingService.isTracking) return;
+    try {
+      await _trackingService.startTracking(
+        busId: _assignedBus!.busId,
+        updateIntervalSeconds: 10,
+        onError: (error) {
+          _error = error;
+          notifyListeners();
+        },
+      );
+      _isOnShift = true;
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to auto-start shift: $e';
+      notifyListeners();
+    }
   }
 
   /// Initialize driver with their UID
@@ -122,7 +158,10 @@ class DriverShiftProvider extends ChangeNotifier {
     }
   }
 
-  /// Start shift - activates GPS tracking
+  /// Start shift - activates GPS tracking.
+  /// Sets [_isOnShift] true immediately (optimistic) so the Firestore stream
+  /// update triggered by setBusActiveStatus cannot race and call _autoStartShift
+  /// while this method is still running.
   Future<bool> startShift() async {
     if (_assignedBus == null) {
       _error = 'No bus assigned';
@@ -134,6 +173,10 @@ class DriverShiftProvider extends ChangeNotifier {
       return true; // Already on shift
     }
 
+    // Optimistic: mark as on-shift NOW so the incoming Firestore stream event
+    // (from setBusActiveStatus below) won't trigger _autoStartShift in parallel.
+    _isOnShift = true;
+
     try {
       // Set bus as active
       final activationError = await _firestoreService.setBusActiveStatus(
@@ -142,6 +185,7 @@ class DriverShiftProvider extends ChangeNotifier {
       );
       if (activationError != null) {
         _error = activationError;
+        _isOnShift = false; // Revert optimistic flag
         notifyListeners();
         return false;
       }
@@ -167,6 +211,7 @@ class DriverShiftProvider extends ChangeNotifier {
           busId: _assignedBus!.busId,
           isActive: false,
         );
+        _isOnShift = false; // Revert optimistic flag
         return false;
       }
 
@@ -174,7 +219,6 @@ class DriverShiftProvider extends ChangeNotifier {
         isActive: true,
         lastUpdated: DateTime.now(),
       );
-      _isOnShift = true;
       _error = null;
       notifyListeners();
       return true;

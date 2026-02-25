@@ -44,8 +44,6 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Drivers'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -67,18 +65,21 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.people_outline,
-                          size: 64, color: Colors.grey[400]),
+                          size: 64,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(height: 16),
                       Text(
                         'No drivers registered',
                         style: TextStyle(
-                            fontSize: 18, color: Colors.grey[600]),
+                            fontSize: 18,
+                            color: Theme.of(context).colorScheme.onSurface),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Drivers registered with the driver role appear here',
                         style: TextStyle(
-                            fontSize: 14, color: Colors.grey[500]),
+                            fontSize: 14,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -103,8 +104,9 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                               children: [
                                 ListTile(
                                   leading: CircleAvatar(
-                                    backgroundColor:
-                                        driver.isActive ? Colors.blue : Colors.grey,
+                                    backgroundColor: driver.isActive
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                                     child: Text(
                                       driver.fullName.isNotEmpty
                                           ? driver.fullName[0].toUpperCase()
@@ -126,13 +128,13 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: Colors.grey.shade200,
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text('Inactive',
-                                              style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.grey)),
+                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text('Inactive',
+                                                style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
                                         ),
                                     ],
                                   ),
@@ -144,12 +146,12 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                                         Text(driver.phoneNumber,
                                             style: TextStyle(
                                                 fontSize: 12,
-                                                color: Colors.grey[600])),
+                                                color: Theme.of(context).colorScheme.onSurfaceVariant)),
                                       Text(
                                         'ID: ${driver.uid}',
                                         style: TextStyle(
                                             fontSize: 11,
-                                            color: Colors.grey[500]),
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                                       ),
                                     ],
                                   ),
@@ -196,26 +198,24 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                                     child: ElevatedButton.icon(
                                       onPressed: !hasAssignedBus
                                           ? () => _showAssignBusDialog(driver)
-                                          : null,
+                                          : () => _confirmUnassignBus(driver),
                                       icon: Icon(
                                         !hasAssignedBus
                                             ? Icons.directions_bus
-                                            : Icons.check,
+                                            : Icons.link_off,
                                         size: 18,
                                       ),
                                       label: Text(
                                         !hasAssignedBus
                                             ? 'Assign Bus'
-                                            : 'Bus Assigned',
+                                            : 'Unassign Bus',
                                         style: const TextStyle(fontSize: 12),
                                       ),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: !hasAssignedBus
-                                            ? Colors.blue
-                                            : Colors.grey[300],
-                                        foregroundColor: !hasAssignedBus
-                                            ? Colors.white
-                                            : Colors.grey[600],
+                                            ? Theme.of(context).colorScheme.primary
+                                            : Colors.orange.shade700,
+                                        foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 12, vertical: 8),
                                       ),
@@ -503,6 +503,96 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _confirmUnassignBus(User driver) {
+    final scaffoldContext = context;
+    final buses = context.read<BusProvider>().buses;
+    final assignedBus = buses.where((b) => b.driverId == driver.uid).firstOrNull;
+
+    if (assignedBus == null) {
+      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+        const SnackBar(content: Text('No bus assigned to this driver')),
+      );
+      return;
+    }
+
+    final isOnActiveShift = assignedBus.isActive;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Unassign Bus'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Remove Bus ${assignedBus.busNumber} (${assignedBus.registrationNumber}) from ${driver.fullName}?',
+            ),
+            if (isOnActiveShift) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  border: Border.all(color: Colors.orange.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        color: Colors.orange.shade700, size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'This bus is currently on an active shift. Unassigning will end the shift and take the bus offline.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final navigator = Navigator.of(dialogContext);
+              final messenger = ScaffoldMessenger.of(scaffoldContext);
+
+              final error = await _firestoreService
+                  .removeDriverFromBus(assignedBus.busId);
+
+              if (!dialogContext.mounted) return;
+              navigator.pop();
+              if (!mounted) return;
+
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(error ??
+                      'Bus ${assignedBus.busNumber} unassigned from ${driver.fullName}'),
+                  backgroundColor: error == null ? Colors.green : Colors.red,
+                ),
+              );
+              if (error == null) {
+                context.read<BusProvider>().fetchBuses();
+                _loadDrivers();
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade700,
+                foregroundColor: Colors.white),
+            child: const Text('Unassign'),
+          ),
+        ],
       ),
     );
   }

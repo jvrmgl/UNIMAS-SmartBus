@@ -4,7 +4,6 @@ import '../models/bus_model.dart';
 import '../models/route_model.dart';
 import '../models/bus_stop_model.dart';
 import '../models/schedule_model.dart';
-import '../models/trip_model.dart';
 import '../models/report_model.dart';
 import '../models/announcement_model.dart';
 import '../models/user_model.dart';
@@ -20,21 +19,9 @@ class FirestoreService {
   // Get all buses
   Future<List<Bus>> getBuses() async {
     try {
-      print('🔵 Fetching buses from Firebase...');
       final snapshot = await _firestore.collection('buses').get();
-      print('📦 Got ${snapshot.docs.length} bus documents');
-      
-      final buses = snapshot.docs.map((doc) {
-        print('🚌 Processing bus: ${doc.id}');
-        print('   Data: ${doc.data()}');
-        return Bus.fromMap(doc.data());
-      }).toList();
-      
-      print('✅ Successfully parsed ${buses.length} buses');
-      return buses;
+      return snapshot.docs.map((doc) => Bus.fromMap(doc.data())).toList();
     } catch (e) {
-      print('❌ Error getting buses: $e');
-      print('   Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -48,7 +35,6 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('Error getting bus: $e');
       return null;
     }
   }
@@ -136,16 +122,23 @@ class FirestoreService {
     }
   }
 
-  // Update active status for a bus
+  // Update active status for a bus.
+  // [adminName] is stored on the document so the Cloud Function
+  // 'onBusActivated' can include it in the driver push notification.
   Future<String?> setBusActiveStatus({
     required String busId,
     required bool isActive,
+    String? adminName,
   }) async {
     try {
       await _firestore.collection('buses').doc(busId).update({
         'isActive': isActive,
         // Reset occupancy when deactivating so stale counts are cleared
         if (!isActive) 'currentOccupancy': 0,
+        // Store activating admin name so the CF can include it in the
+        // driver shift-started notification; clear it on deactivation.
+        if (isActive && adminName != null) 'activatedByAdminName': adminName,
+        if (!isActive) 'activatedByAdminName': null,
         'lastUpdated': DateTime.now().toIso8601String(),
       });
       return null;
@@ -172,12 +165,17 @@ class FirestoreService {
     }
   }
 
-  // Remove driver from bus
+  // Remove driver from bus.
+  // Also deactivates the bus and resets occupancy so that the driver's
+  // DriverShiftProvider stream detects the isActive flip and automatically
+  // calls endShift() — stopping GPS tracking and clearing active sessions.
   Future<String?> removeDriverFromBus(String busId) async {
     try {
       await _firestore.collection('buses').doc(busId).update({
         'driverId': null,
         'driverName': null,
+        'isActive': false,
+        'currentOccupancy': 0,
         'lastUpdated': DateTime.now().toIso8601String(),
       });
       return null;
@@ -243,21 +241,9 @@ class FirestoreService {
   // Get all routes
   Future<List<BusRoute>> getRoutes() async {
     try {
-      print('🔵 Fetching routes from Firebase...');
       final snapshot = await _firestore.collection('routes').get();
-      print('📦 Got ${snapshot.docs.length} route documents');
-      
-      final routes = snapshot.docs.map((doc) {
-        print('🛣️  Processing route: ${doc.id}');
-        print('   Data: ${doc.data()}');
-        return BusRoute.fromMap(doc.data());
-      }).toList();
-      
-      print('✅ Successfully parsed ${routes.length} routes');
-      return routes;
+      return snapshot.docs.map((doc) => BusRoute.fromMap(doc.data())).toList();
     } catch (e) {
-      print('❌ Error getting routes: $e');
-      print('   Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -271,7 +257,6 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('Error getting route: $e');
       return null;
     }
   }
@@ -345,7 +330,6 @@ class FirestoreService {
           .map((doc) => BusStop.fromMap(doc.data()))
           .toList();
     } catch (e) {
-      print('Error getting bus stops: $e');
       return [];
     }
   }
@@ -359,7 +343,6 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('Error getting bus stop: $e');
       return null;
     }
   }
@@ -420,7 +403,6 @@ class FirestoreService {
           .map((doc) => BusSchedule.fromMap(doc.data()))
           .toList();
     } catch (e) {
-      print('Error getting schedules: $e');
       return [];
     }
   }
@@ -433,7 +415,6 @@ class FirestoreService {
           .map((doc) => BusSchedule.fromMap(doc.data()))
           .toList();
     } catch (e) {
-      print('Error getting schedules: $e');
       return [];
     }
   }
@@ -448,71 +429,6 @@ class FirestoreService {
     }
   }
 
-  // ============ TRIP OPERATIONS ============
-
-  // Create trip
-  Future<String?> createTrip(Trip trip) async {
-    try {
-      await _firestore.collection('trips').doc(trip.tripId).set(trip.toMap());
-      return null;
-    } catch (e) {
-      return 'Error creating trip: $e';
-    }
-  }
-
-  // Update trip status
-  Future<String?> updateTripStatus(String tripId, TripStatus status) async {
-    try {
-      await _firestore.collection('trips').doc(tripId).update({
-        'status': status.toString().split('.').last,
-        'endTime': DateTime.now().toIso8601String(),
-      });
-      return null;
-    } catch (e) {
-      return 'Error updating trip: $e';
-    }
-  }
-
-  // Get active trips for a bus
-  Future<List<Trip>> getActiveTripsByBus(String busId) async {
-    try {
-      final snapshot = await _firestore
-          .collection('trips')
-          .where('busId', isEqualTo: busId)
-          .where('status', whereIn: ['scheduled', 'inProgress'])
-          .get();
-      return snapshot.docs
-          .map((doc) => Trip.fromMap(doc.data()))
-          .toList();
-    } catch (e) {
-      print('Error getting active trips: $e');
-      return [];
-    }
-  }
-
-  // Get completed trips (recent history)
-  Future<List<Trip>> getCompletedTrips({int limit = 10}) async {
-    try {
-      print('🔵 Fetching completed trips...');
-      final snapshot = await _firestore
-          .collection('trips')
-          .where('status', isEqualTo: 'completed')
-          .orderBy('endTime', descending: true)
-          .limit(limit)
-          .get();
-      
-      final trips = snapshot.docs
-          .map((doc) => Trip.fromMap(doc.data()))
-          .toList();
-      
-      print('✅ Got ${trips.length} completed trips');
-      return trips;
-    } catch (e) {
-      print('❌ Error getting completed trips: $e');
-      return [];
-    }
-  }
-
   // ============ REPORT OPERATIONS ============
 
   // Get all reports
@@ -523,7 +439,6 @@ class FirestoreService {
           .map((doc) => Report.fromMap(doc.data()))
           .toList();
     } catch (e) {
-      print('Error getting reports: $e');
       return [];
     }
   }
@@ -630,7 +545,6 @@ class FirestoreService {
           .map((doc) => Announcement.fromMap(doc.data()))
           .toList();
     } catch (e) {
-      print('Error getting announcements: $e');
       return [];
     }
   }
@@ -689,7 +603,6 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('Error getting user data: $e');
       return null;
     }
   }
@@ -703,7 +616,6 @@ class FirestoreService {
           .get();
       return snapshot.docs.map((doc) => User.fromMap(doc.data())).toList();
     } catch (e) {
-      print('Error getting users by role: $e');
       return [];
     }
   }
@@ -783,26 +695,13 @@ class FirestoreService {
   // Get all active schedule images sorted by order
   Future<List<ScheduleImage>> getScheduleImages() async {
     try {
-      print('🖼️ Fetching schedule images from Firebase...');
       final snapshot = await _firestore
           .collection('schedule_images')
           .where('isActive', isEqualTo: true)
           .orderBy('order')
           .get();
-      
-      print('📦 Got ${snapshot.docs.length} schedule image documents');
-      
-      final images = snapshot.docs.map((doc) {
-        print('🖼️ Processing image: ${doc.id}');
-        print('   Data: ${doc.data()}');
-        return ScheduleImage.fromMap(doc.data());
-      }).toList();
-      
-      print('✅ Successfully parsed ${images.length} schedule images');
-      return images;
+      return snapshot.docs.map((doc) => ScheduleImage.fromMap(doc.data())).toList();
     } catch (e) {
-      print('❌ Error getting schedule images: $e');
-      print('   Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -848,29 +747,14 @@ class FirestoreService {
 
   // Stream schedule images for real-time updates
   Stream<List<ScheduleImage>> streamScheduleImages() {
-    print('📡 Starting schedule images stream...');
     return _firestore
         .collection('schedule_images')
         .orderBy('order')
         .snapshots()
-        .map((snapshot) {
-          print('📡 Stream update: ${snapshot.docs.length} schedule images');
-          return snapshot.docs
-              .map((doc) {
-                try {
-                  print('   Processing: ${doc.id}');
-                  return ScheduleImage.fromMap(doc.data());
-                } catch (e) {
-                  print('   ❌ Error parsing ${doc.id}: $e');
-                  rethrow;
-                }
-              })
-              .where((image) => image.isActive) // Filter active images in code
-              .toList();
-        }).handleError((error) {
-          print('❌ Stream error: $error');
-          return <ScheduleImage>[];
-        });
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ScheduleImage.fromMap(doc.data()))
+            .where((image) => image.isActive)
+            .toList());
   }
 
   // ============ DEVICE BUS SESSION OPERATIONS ============
@@ -890,7 +774,6 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('Error getting device active bus: $e');
       return null;
     }
   }
@@ -917,7 +800,6 @@ class FirestoreService {
 
       return null; // Success
     } catch (e) {
-      print('Error tapping in: $e');
       return 'Error: $e';
     }
   }
@@ -948,7 +830,6 @@ class FirestoreService {
 
       return null; // Success
     } catch (e) {
-      print('Error tapping out: $e');
       return 'Error: $e';
     }
   }
@@ -974,7 +855,7 @@ class FirestoreService {
         await batch.commit();
       }
     } catch (e) {
-      print('Error clearing bus sessions: $e');
+      // ignore
     }
   }
 
@@ -1031,10 +912,8 @@ class FirestoreService {
       );
 
       await _firestore.collection('student_trips').doc(tripId).set(trip.toMap());
-      print('✅ Created trip: $tripId');
       return null; // Success
     } catch (e) {
-      print('❌ Error creating trip: $e');
       return 'Error: $e';
     }
   }
@@ -1051,7 +930,6 @@ class FirestoreService {
           .get();
 
       if (snapshot.docs.isEmpty) {
-        print('⚠️ No active trip found for device: $deviceId');
         return null; // No active trip, that's okay
       }
 
@@ -1064,10 +942,8 @@ class FirestoreService {
         'status': 'completed',
       });
 
-      print('✅ Completed trip: ${snapshot.docs.first.id}');
       return null; // Success
     } catch (e) {
-      print('❌ Error completing trip: $e');
       return 'Error: $e';
     }
   }
@@ -1087,7 +963,6 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('❌ Error getting active trip: $e');
       return null;
     }
   }
@@ -1125,8 +1000,45 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('❌ Error getting trip: $e');
       return null;
+    }
+  }
+
+  // ── Notification Templates ──────────────────────────────────────────────────
+
+  /// Returns all template overrides stored in Firestore.
+  /// Falls back to an empty map if the collection is missing or on error.
+  Future<Map<String, Map<String, String>>> getNotificationTemplates() async {
+    try {
+      final snap =
+          await _firestore.collection('notification_templates').get();
+      return {
+        for (final doc in snap.docs)
+          doc.id: {
+            'title': doc.data()['title'] as String? ?? '',
+            'body': doc.data()['body'] as String? ?? '',
+          }
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Writes (or overwrites) a single notification template in Firestore.
+  Future<String?> updateNotificationTemplate(
+      String templateId, String title, String body) async {
+    try {
+      await _firestore
+          .collection('notification_templates')
+          .doc(templateId)
+          .set({
+        'title': title,
+        'body': body,
+        'updatedAt': DateTime.now().toIso8601String(),
+      }, SetOptions(merge: true));
+      return null;
+    } catch (e) {
+      return 'Error updating template: $e';
     }
   }
 

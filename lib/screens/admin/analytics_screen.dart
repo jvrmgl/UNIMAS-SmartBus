@@ -30,8 +30,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Analytics & Statistics'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -113,43 +111,63 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   elevation: 2,
                   child: Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: _buildCompactOverviewStat(
-                            icon: Icons.directions_bus,
-                            value: '$activeBuses/$totalBuses',
-                            label: 'Buses\nActive/Total',
-                            color: Colors.blue,
-                          ),
+                        // Row 1: Buses + Routes
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildOverviewStat(
+                                icon: Icons.directions_bus,
+                                value: '$activeBuses/$totalBuses',
+                                label: 'Buses Active/Total',
+                                color: Colors.blue,
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 64,
+                              color: Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                            Expanded(
+                              child: _buildOverviewStat(
+                                icon: Icons.route,
+                                value: totalRoutes.toString(),
+                                label: 'Routes',
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
                         ),
-                        _buildVerticalDivider(),
-                        Expanded(
-                          child: _buildCompactOverviewStat(
-                            icon: Icons.route,
-                            value: totalRoutes.toString(),
-                            label: 'Routes',
-                            color: Colors.green,
-                          ),
+                        Divider(
+                          height: 1,
+                          color: Theme.of(context).colorScheme.outlineVariant,
                         ),
-                        _buildVerticalDivider(),
-                        Expanded(
-                          child: _buildCompactOverviewStat(
-                            icon: Icons.people,
-                            value: passengersToday.toString(),
-                            label: 'Passengers\nToday',
-                            color: Colors.orange,
-                          ),
-                        ),
-                        _buildVerticalDivider(),
-                        Expanded(
-                          child: _buildCompactOverviewStat(
-                            icon: Icons.report_problem,
-                            value: pending.toString(),
-                            label: 'Pending\nReports',
-                            color: pending > 0 ? Colors.red : Colors.grey,
-                          ),
+                        // Row 2: Passengers + Pending Reports
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildOverviewStat(
+                                icon: Icons.people,
+                                value: passengersToday.toString(),
+                                label: 'Passengers Today',
+                                color: Colors.orange,
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 64,
+                              color: Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                            Expanded(
+                              child: _buildOverviewStat(
+                                icon: Icons.report_problem,
+                                value: pending.toString(),
+                                label: 'Pending Reports',
+                                color: pending > 0 ? Colors.red : Colors.grey,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -163,44 +181,48 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildCompactOverviewStat({
+  Widget _buildOverviewStat({
     required IconData icon,
     required String value,
     required String label,
     required Color color,
   }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: 28),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 22),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey[700],
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVerticalDivider() {
-    return Container(
-      height: 60,
-      width: 1,
-      color: Colors.grey.shade300,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              height: 1.3,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 

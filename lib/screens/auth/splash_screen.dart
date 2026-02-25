@@ -11,15 +11,28 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   bool _minDelayElapsed = false;
   bool _hasNavigated = false;
   AuthProvider? _authProvider;
+  late final AnimationController _animCtrl;
+  late final Animation<double> _scaleAnim;
+  late final Animation<double> _fadeAnim;
 
   @override
   void initState() {
     super.initState();
-    // Enforce a minimum 2-second splash display time.
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _scaleAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack),
+    );
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _animCtrl.forward();
+
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         setState(() => _minDelayElapsed = true);
@@ -41,8 +54,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   void dispose() {
-    // Remove the listener when this screen is disposed.
     _authProvider?.removeListener(_tryNavigate);
+    _animCtrl.dispose();
     super.dispose();
   }
 
@@ -50,13 +63,9 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted || _hasNavigated) return;
     final authProvider = _authProvider;
     if (authProvider == null) return;
-
-    // Wait until both the minimum delay has passed and Firebase + Firestore
-    // have finished restoring the session.
     if (!_minDelayElapsed || !authProvider.isInitialized) return;
 
     final userRole = authProvider.currentUser?.role;
-
     if (authProvider.isAuthenticated) {
       if (userRole == UserRole.student) {
         _hasNavigated = true;
@@ -68,12 +77,10 @@ class _SplashScreenState extends State<SplashScreen> {
         _hasNavigated = true;
         Navigator.of(context).pushReplacementNamed('/admin');
       } else {
-        // Authenticated but no recognised role — fall back to guest view.
         _hasNavigated = true;
         Navigator.of(context).pushReplacementNamed('/guest');
       }
     } else {
-      // Not logged in — open the guest map view.
       _hasNavigated = true;
       Navigator.of(context).pushReplacementNamed('/guest');
     }
@@ -82,50 +89,73 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.primaryColor,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // App Logo
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Icon(
-                Icons.directions_bus,
-                size: 80,
-                color: AppTheme.primaryColor,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppTheme.primaryColor,
+              Color(0xFF0D47A1),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: ScaleTransition(
+                scale: _scaleAnim,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(28),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 2,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.directions_bus_rounded,
+                        size: 72,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    const Text(
+                      'UNIMAS SmartBus',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Real-Time Bus Tracking',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.white.withValues(alpha: 0.8),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 56),
+                    const CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Colors.white),
+                      strokeWidth: 2.5,
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 32),
-            // App Title
-            Text(
-              'UNIMAS SmartBus',
-              style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            // Subtitle
-            Text(
-              'Real-Time Bus Tracking',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Colors.white70,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 48),
-            // Loading Indicator
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              strokeWidth: 3,
-            ),
-          ],
+          ),
         ),
       ),
     );

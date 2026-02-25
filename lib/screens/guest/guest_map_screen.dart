@@ -11,6 +11,7 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../widgets/common_widgets.dart';
 import '../../providers/notification_prefs_provider.dart';
 import '../../providers/dashboard_nav_provider.dart';
 import '../../services/smart_notification_service.dart';
@@ -66,6 +67,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     _loadMarkerIcons();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadBusesAndStops();
+      // Auto-detect and pan to student's location on first map load.
+      _detectMyLocation();
       // Listen to location updates for auto-detect waiting
       _locationProviderRef = context.read<LocationProvider>();
       _locationProviderRef!.addListener(_onLocationChanged);
@@ -255,9 +258,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.navigation),
-                  label: const Text('Guide Me There'),
+                child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
                     foregroundColor: Colors.white,
@@ -267,6 +268,15 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     Navigator.pop(ctx);
                     _guideMeThere(stop);
                   },
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.navigation, size: 18),
+                      SizedBox(width: 8),
+                      Text('Guide Me There'),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -866,82 +876,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   }
 
   void _showNotificationsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Notifications'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final visibleAnnouncements =
-                    announcementProvider.visibleAnnouncementsFor('student');
-                if (announcementProvider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (visibleAnnouncements.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No announcements'),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: visibleAnnouncements.length,
-                  itemBuilder: (context, index) {
-                    final announcement = visibleAnnouncements[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              announcement.title,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              announcement.description,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final hasVisibleNotifications =
-                    announcementProvider.hasVisibleAnnouncementsFor('student');
-                return TextButton(
-                  onPressed: hasVisibleNotifications
-                      ? () {
-                          announcementProvider.clearAnnouncementsFor('student');
-                          Navigator.pop(context);
-                        }
-                      : null,
-                  child: const Text('Clear Notifications'),
-                );
-              },
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showAppNotificationsSheet(context, 'student');
   }
 
   @override

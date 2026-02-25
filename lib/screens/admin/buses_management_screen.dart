@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../models/bus_model.dart';
@@ -41,8 +42,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Buses'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddBusDialog(),
@@ -246,10 +245,10 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: bus.driverId == null
                                     ? Colors.blue
-                                    : Colors.grey[300],
+                                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                                 foregroundColor: bus.driverId == null
                                     ? Colors.white
-                                    : Colors.grey[600],
+                                    : Theme.of(context).colorScheme.onSurfaceVariant,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 8),
                               ),
@@ -272,10 +271,10 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: bus.assignedRoute == null
                                     ? Colors.green
-                                    : Colors.grey[300],
+                                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                                 foregroundColor: bus.assignedRoute == null
                                     ? Colors.white
-                                    : Colors.grey[600],
+                                    : Theme.of(context).colorScheme.onSurfaceVariant,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 8),
                               ),
@@ -323,34 +322,41 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
           title: const Text('Assign Driver'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Assign a driver to Bus ${bus.busNumber}'),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                value: selectedDriverId,
-                decoration: const InputDecoration(
-                  labelText: 'Driver',
-                  prefixIcon: Icon(Icons.person),
-                ),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('No driver'),
-                  ),
-                  ...drivers.map(
-                    (driver) => DropdownMenuItem<String?>(
-                      value: driver.uid,
-                      child: Text('${driver.fullName} (${driver.email})'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Assign a driver to Bus ${bus.busNumber}'),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    value: selectedDriverId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Driver',
+                      prefixIcon: Icon(Icons.person),
                     ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('No driver'),
+                      ),
+                      ...drivers.map(
+                        (driver) => DropdownMenuItem<String?>(
+                          value: driver.uid,
+                          child: Text('${driver.fullName} (${driver.email})',
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setDialogState(() => selectedDriverId = value);
+                    },
                   ),
                 ],
-                onChanged: (value) {
-                  setDialogState(() => selectedDriverId = value);
-                },
               ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
@@ -687,9 +693,13 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
       }
     }
 
+    // Pass admin name so the Cloud Function can include it in the driver
+    // push notification when the bus is activated.
+    final adminName = context.read<AuthProvider>().currentUser?.fullName;
     final error = await _firestoreService.setBusActiveStatus(
       busId: bus.busId,
       isActive: !wasActive,
+      adminName: adminName,
     );
 
     // Stream auto-updates the UI with the new status badge immediately.

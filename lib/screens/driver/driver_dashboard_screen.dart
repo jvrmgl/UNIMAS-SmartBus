@@ -8,6 +8,8 @@ import '../../providers/route_provider.dart';
 import '../../constants/app_theme.dart';
 import '../../models/bus_stop_model.dart';
 import '../../services/notification_service.dart';
+import '../../services/firestore_service.dart';
+import '../../widgets/common_widgets.dart';
 import '../../widgets/slide_button.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
@@ -19,6 +21,7 @@ class DriverDashboardScreen extends StatefulWidget {
 
 class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   bool _isOccupancyEditorOpen = false;
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   void initState() {
@@ -91,8 +94,17 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           Consumer<AuthProvider>(
             builder: (context, authProvider, _) {
               return Container(
-                padding: const EdgeInsets.all(16),
-                color: AppTheme.primaryColor,
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.primaryColor,
+                      Color(0xFF0D47A1),
+                    ],
+                  ),
+                ),
                 width: double.infinity,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,6 +113,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       'Welcome, ${authProvider.currentUser?.fullName ?? "Driver"}!',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -161,7 +174,13 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                         _buildShiftControlCard(shiftProvider),
                       
                       const SizedBox(height: 16),
-                      
+
+                      // Route Selection (no route assigned, not on shift)
+                      if (shiftProvider.hasAssignedBus &&
+                          shiftProvider.assignedBus!.assignedRoute == null &&
+                          !shiftProvider.isOnShift)
+                        _buildRouteSelectionCard(shiftProvider),
+
                       // Route Information
                       if (shiftProvider.hasAssignedBus && shiftProvider.assignedBus!.assignedRoute != null)
                         _buildRouteInfoCard(shiftProvider),
@@ -467,12 +486,40 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                   ),
                 ),
               ),
+            if (!shiftProvider.isOnShift &&
+                shiftProvider.assignedBus?.assignedRoute == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_outlined,
+                        size: 14, color: Colors.orange.shade700),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Please select a route below before starting your shift',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 16),
             SlideButton(
               text: shiftProvider.isOnShift ? 'Slide to End Shift' : 'Slide to Start Shift',
               onConfirm: () {
                 if (shiftProvider.isOnShift) {
                   _endShift(shiftProvider);
+                } else if (shiftProvider.assignedBus?.assignedRoute == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select a route before starting your shift'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
                 } else {
                   _startShift(shiftProvider);
                 }
@@ -506,6 +553,112 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRouteSelectionCard(DriverShiftProvider shiftProvider) {
+    return Consumer<RouteProvider>(
+      builder: (context, routeProvider, _) {
+        if (routeProvider.routes.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.route,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('No routes available — contact your admin.'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.route, color: Colors.orange.shade700),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Select Route',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Your bus has no route assigned. Select one to proceed.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Route',
+                    prefixIcon: Icon(Icons.map_outlined),
+                    isDense: true,
+                  ),
+                  items: routeProvider.routes
+                      .map(
+                        (route) => DropdownMenuItem(
+                          value: route.routeId,
+                          child: Text(route.routeName,
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (routeId) async {
+                    if (routeId == null) return;
+                    final bus = shiftProvider.assignedBus;
+                    if (bus == null) return;
+                    final busProvider = context.read<BusProvider>();
+                    final messenger = ScaffoldMessenger.of(context);
+                    final err = await _firestoreService.assignRouteToBus(
+                      busId: bus.busId,
+                      routeId: routeId,
+                    );
+                    if (!mounted) return;
+                    if (err == null) {
+                      busProvider.fetchBuses();
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Route selected'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } else {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('Error: $err'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -922,83 +1075,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   }
 
   void _showNotificationsDialog() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Notifications'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final visibleAnnouncements =
-                    announcementProvider.visibleAnnouncementsFor('driver');
-                if (announcementProvider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (visibleAnnouncements.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No announcements'),
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: visibleAnnouncements.length,
-                  itemBuilder: (context, index) {
-                    final announcement = visibleAnnouncements[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              announcement.title,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              announcement.description,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final hasVisibleNotifications =
-                    announcementProvider.hasVisibleAnnouncementsFor('driver');
-                return TextButton(
-                  onPressed: hasVisibleNotifications
-                      ? () {
-                          announcementProvider.clearAnnouncementsFor('driver');
-                          Navigator.pop(dialogContext);
-                        }
-                      : null,
-                  child: const Text('Clear Notifications'),
-                );
-              },
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showAppNotificationsSheet(context, 'driver');
   }
 }

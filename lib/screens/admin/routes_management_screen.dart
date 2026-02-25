@@ -33,8 +33,6 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Routes'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.location_on),
@@ -90,13 +88,13 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.route, size: 64, color: Colors.grey[400]),
+                  Icon(Icons.route, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   const SizedBox(height: 16),
                   Text(
                     'No routes available',
                     style: TextStyle(
                       fontSize: 18,
-                      color: Colors.grey[600],
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -104,7 +102,7 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                     'Tap the + button to add a route',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[500],
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -139,8 +137,8 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                     ListTile(
                       leading: Container(
                         padding: const EdgeInsets.all(10),
-                        decoration: const BoxDecoration(
-                          color: Colors.blue,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -160,15 +158,17 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.blue.withValues(alpha: 0.15),
+                              color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.blue, width: 0.8),
+                              border: Border.all(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  width: 0.8),
                             ),
                             child: Text(
                               route.routeCode,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.blue,
+                                color: Theme.of(context).colorScheme.primary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -179,7 +179,7 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                         padding: const EdgeInsets.only(top: 4),
                         child: Row(
                           children: [
-                            const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                            Icon(Icons.location_on, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             const SizedBox(width: 4),
                             Text('${route.stopIds.length} stops'),
                           ],
@@ -229,12 +229,12 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                           final stop = entry.value;
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: Colors.blue.withValues(alpha: 0.2),
+                              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                               radius: 16,
                               child: Text(
                                 '${stopIndex + 1}',
-                                style: const TextStyle(
-                                  color: Colors.blue,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -671,77 +671,189 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
 
   void _showManageStopsScreen() {
     final scaffoldContext = context;
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Manage Bus Stops'),
-        content: Consumer<RouteProvider>(
-          builder: (context, routeProvider, _) {
-            if (routeProvider.busStops.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No bus stops available'),
-              );
-            }
-
-            return SizedBox(
-              width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: routeProvider.busStops.length,
-                itemBuilder: (context, index) {
-                  final stop = routeProvider.busStops[index];
-                  return ListTile(
-                    leading: const Icon(Icons.location_on),
-                    title: Text(stop.stopName),
-                    subtitle: Text(
-                      '${stop.stopCode} • ${stop.latitude.toStringAsFixed(5)}, ${stop.longitude.toStringAsFixed(5)}',
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.80,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.place,
+                          color: Theme.of(context).colorScheme.primary, size: 20),
                     ),
-                    trailing: SizedBox(
-                      width: 96,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit, size: 20),
-                            tooltip: 'Edit stop',
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                              _showEditBusStopDialog(stop);
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete,
-                                size: 20, color: Colors.red),
-                            tooltip: 'Delete stop',
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                              _confirmDeleteBusStop(stop);
-                            },
-                          ),
-                        ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Manage Bus Stops',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                     ),
-                  );
-                },
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(sheetCtx),
+                    ),
+                  ],
+                ),
               ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
+              const SizedBox(height: 8),
+              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+              // Content
+              Flexible(
+                child: Consumer<RouteProvider>(
+                  builder: (context, routeProvider, _) {
+                    if (routeProvider.busStops.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.all(40),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.place_outlined,
+                                size: 48,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            const SizedBox(height: 16),
+                            Text('No bus stops yet',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 8),
+                            Text('Tap "Add Stop" to create one',
+                                style: Theme.of(context).textTheme.bodyMedium),
+                          ],
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      shrinkWrap: true,
+                      itemCount: routeProvider.busStops.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final stop = routeProvider.busStops[index];
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.40),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: ListTile(
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.10),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.location_on,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 20),
+                            ),
+                            title: Text(
+                              stop.stopName,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              '${stop.stopCode} • ${stop.latitude.toStringAsFixed(5)}, ${stop.longitude.toStringAsFixed(5)}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit_outlined,
+                                      size: 20,
+                                      color: Theme.of(context).colorScheme.primary),
+                                  tooltip: 'Edit stop',
+                                  onPressed: () {
+                                    Navigator.pop(sheetCtx);
+                                    _showEditBusStopDialog(stop);
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      size: 20, color: Colors.red),
+                                  tooltip: 'Delete stop',
+                                  onPressed: () {
+                                    Navigator.pop(sheetCtx);
+                                    _confirmDeleteBusStop(stop);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              // Add Stop button
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                    16, 8, 16, MediaQuery.of(context).padding.bottom + 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetCtx);
+                      _showAddBusStopDialog(scaffoldContext);
+                    },
+                    icon: const Icon(Icons.add_location_alt_outlined, size: 20),
+                    label: const Text('Add Stop'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _showAddBusStopDialog(scaffoldContext);
-            },
-            child: const Text('Add Stop'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

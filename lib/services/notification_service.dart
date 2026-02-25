@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../utils/app_navigator.dart';
 
 class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
@@ -98,7 +100,7 @@ class NotificationService {
         // dedicated bus_updates channel; everything else goes to announcements.
         final msgType = message.data['type'] as String? ?? '';
         final isSmartNotif = ['bus_approaching', 'tap_out_reminder',
-            'shift_reminder'].contains(msgType);
+            'shift_reminder', 'shift_started'].contains(msgType);
         final channelId = isSmartNotif ? 'bus_updates' : 'announcements';
         final channelName = isSmartNotif ? 'Bus Updates' : 'Announcements';
 
@@ -124,13 +126,28 @@ class NotificationService {
       }
     });
 
-    // Handle background messages
+    // Handle background messages (app open, notification tapped)
     _onMessageOpenedAppSubscription =
         FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       if (kDebugMode) {
-        debugPrint('Message clicked!');
+        debugPrint('Notification tapped: type=${message.data["type"]}');
       }
-      // Handle message click
+      _handleMessageNavigation(message);
+    });
+
+    // Handle terminated-state messages (app launched from notification tap).
+    // The reactive DriverShiftProvider stream already auto-starts the shift
+    // when bus.isActive is true; we only need to navigate to the driver screen.
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null) {
+        if (kDebugMode) {
+          debugPrint('App launched from notification: type=${message.data["type"]}');
+        }
+        // Defer until the widget tree (and navigatorKey) is ready.
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _handleMessageNavigation(message);
+        });
+      }
     });
 
     _isInitialized = true;
@@ -144,6 +161,19 @@ class NotificationService {
     _isInitialized = false;
   }
 
+  /// Navigate to the appropriate screen based on the notification type.
+  void _handleMessageNavigation(RemoteMessage message) {
+    final type = message.data['type'] as String? ?? '';
+    if (type == 'shift_started') {
+      // Bring the driver to their dashboard where the shift auto-starts
+      // because DriverShiftProvider detects bus.isActive == true.
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/driver',
+        (route) => false,
+      );
+    }
+  }
+
   // Get FCM token
   Future<String?> getFCMToken() async {
     return await _firebaseMessaging.getToken();
@@ -151,8 +181,15 @@ class NotificationService {
 
   /// Persist the device FCM token to Firestore so Cloud Functions can send
   /// targeted notifications. Pass [userId] for authenticated users.
+  /// If [userId] is null and there is no authenticated user, the write is
+  /// skipped silently (Firestore rules require auth).
   Future<void> saveDeviceToken({String? userId}) async {
     try {
+      final effectiveUserId = userId ?? FirebaseAuth.instance.currentUser?.uid;
+      // Skip if there is no authenticated user — Firestore rules block the write
+      // and the token will be saved again after login via driver_dashboard.
+      if (effectiveUserId == null) return;
+
       final token = await _firebaseMessaging.getToken();
       if (token == null) return;
 
@@ -170,18 +207,16 @@ class NotificationService {
       // Always save under deviceId
       await db.collection('device_tokens').doc(deviceId).set({
         'fcmToken': token,
-        'userId': userId,
+        'userId': effectiveUserId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       // Also save under userId so driver shift reminder CF can look up by UID
-      if (userId != null) {
-        await db.collection('device_tokens').doc(userId).set({
-          'fcmToken': token,
-          'deviceId': deviceId,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
+      await db.collection('device_tokens').doc(effectiveUserId).set({
+        'fcmToken': token,
+        'deviceId': deviceId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('NotificationService: saveDeviceToken error: $e');
     }

@@ -14,6 +14,7 @@ import '../../models/bus_model.dart';
 import '../../models/bus_stop_model.dart';
 import '../../models/schedule_image_model.dart';
 import '../../services/firestore_service.dart';
+import '../../widgets/common_widgets.dart';
 import 'report_screen.dart';
 import 'student_trips_screen.dart';
 import '../shared/bus_detail_screen.dart';
@@ -114,8 +115,17 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           Consumer<AuthProvider>(
             builder: (context, authProvider, _) {
               return Container(
-                padding: const EdgeInsets.all(16),
-                color: AppTheme.primaryColor,
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.primaryColor,
+                      Color(0xFF0D47A1),
+                    ],
+                  ),
+                ),
                 width: double.infinity,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,20 +134,15 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                       'Welcome, ${authProvider.currentUser?.fullName ?? "User"}!',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'View real-time bus schedules',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.white70,
-                          ),
-                        ),
-                        const SizedBox.shrink(),
-                      ],
+                    Text(
+                      'View real-time bus schedules',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white70,
+                      ),
                     ),
                   ],
                 ),
@@ -147,10 +152,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           // Tab Bar
           TabBar(
             controller: _tabController,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             indicatorColor: AppTheme.primaryColor,
             labelColor: AppTheme.primaryColor,
             unselectedLabelColor: Colors.grey,
-            labelStyle: const TextStyle(fontSize: 11),
+            labelStyle: const TextStyle(fontSize: 12),
             tabs: const [
               Tab(icon: Icon(Icons.schedule, size: 20), text: 'Schedules'),
               Tab(icon: Icon(Icons.directions_bus, size: 20), text: 'Buses'),
@@ -775,14 +782,21 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                           child: SizedBox(
                             width: double.infinity,
-                            child: ElevatedButton.icon(
-                              icon: const Icon(Icons.navigation, size: 18),
-                              label: const Text('Guide Me There'),
+                            child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primaryColor,
                                 foregroundColor: Colors.white,
                               ),
                               onPressed: () => _guideMeThere(entry.stop),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.navigation, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Guide Me There'),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -999,118 +1013,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     await launchUrl(webUri, mode: LaunchMode.externalApplication);
   }
 
-  Widget _buildAnnouncementsTab() {
-    return Consumer<AnnouncementProvider>(
-      builder: (context, announcementProvider, _) {
-        final visibleAnnouncements =
-            announcementProvider.visibleAnnouncementsFor('student');
-        if (announcementProvider.isLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (visibleAnnouncements.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.notifications, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                Text(
-                  'No announcements',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: visibleAnnouncements.length,
-          itemBuilder: (context, index) {
-            final announcement = visibleAnnouncements[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            announcement.title,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            announcement.type.toString().split('.').last,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      announcement.description,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   Widget _buildReportsTab() {
     return const ReportScreen();
   }
 
   void _showNotificationsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Notifications'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: _buildAnnouncementsTab(),
-          ),
-          actions: [
-            Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final hasVisibleNotifications =
-                    announcementProvider.hasVisibleAnnouncementsFor('student');
-                return TextButton(
-                  onPressed: hasVisibleNotifications
-                      ? () {
-                          announcementProvider.clearAnnouncementsFor('student');
-                          Navigator.pop(context);
-                        }
-                      : null,
-                  child: const Text('Clear Notifications'),
-                );
-              },
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showAppNotificationsSheet(context, 'student');
   }
 
   Widget _buildNetworkScheduleImage(String imageUrl, String title) {

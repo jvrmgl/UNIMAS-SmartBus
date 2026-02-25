@@ -20,6 +20,7 @@ import 'services/notification_service.dart';
 import 'providers/notification_prefs_provider.dart';
 import 'screens/auth/splash_screen.dart';
 import 'services/smart_notification_service.dart';
+import 'utils/app_navigator.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/guest/guest_home_screen.dart';
@@ -84,6 +85,7 @@ class MyApp extends StatelessWidget {
         builder: (context, themeProvider, _) {
           return MaterialApp(
             title: AppConstants.appName,
+            navigatorKey: navigatorKey,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.themeMode,

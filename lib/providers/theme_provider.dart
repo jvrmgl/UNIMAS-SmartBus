@@ -5,9 +5,15 @@ class ThemeProvider extends ChangeNotifier {
 
   ThemeMode get themeMode => _themeMode;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
+  bool get isSystemMode => _themeMode == ThemeMode.system;
 
-  void setDarkMode(bool enabled) {
-    _themeMode = enabled ? ThemeMode.dark : ThemeMode.light;
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
     notifyListeners();
+  }
+
+  // Legacy helper — kept so any code still calling setDarkMode continues working.
+  void setDarkMode(bool enabled) {
+    setThemeMode(enabled ? ThemeMode.dark : ThemeMode.light);
   }
 }

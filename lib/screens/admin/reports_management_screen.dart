@@ -53,48 +53,46 @@ class _ReportsManagementScreenState extends State<ReportsManagementScreen> {
           return Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search reports',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withValues(alpha: 0.5),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   children: [
-                    TextField(
-                      controller: _searchController,
-                      decoration: const InputDecoration(
-                        labelText: 'Search reports',
-                        prefixIcon: Icon(Icons.search),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<ReportStatus>(
-                      value: _filterStatus,
-                      decoration: const InputDecoration(
-                        labelText: 'Filter by Status',
-                      ),
-                      items: [
-                        const DropdownMenuItem(
-                          value: null,
-                          child: Text('All'),
-                        ),
-                        ...ReportStatus.values.map(
-                          (status) => DropdownMenuItem(
-                            value: status,
-                            child: Text(
-                              status
-                                  .toString()
-                                  .split('.')
-                                  .last
-                                  .toUpperCase(),
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _filterStatus = value);
-                      },
-                    ),
+                    _statusChip(null, 'All',
+                        Theme.of(context).colorScheme.primary),
+                    _statusChip(ReportStatus.pending, 'Pending', Colors.orange),
+                    _statusChip(
+                        ReportStatus.reviewed, 'Reviewed', Colors.blue),
+                    _statusChip(
+                        ReportStatus.resolved, 'Resolved', Colors.green),
+                    _statusChip(
+                        ReportStatus.rejected, 'Rejected', Colors.red),
                   ],
                 ),
               ),
+              const SizedBox(height: 8),
               Expanded(
                 child: filtered.isEmpty
                     ? const Center(child: Text('No reports found'))
@@ -172,5 +170,34 @@ class _ReportsManagementScreenState extends State<ReportsManagementScreen> {
       case ReportStatus.rejected:
         return Colors.red;
     }
+  }
+
+  Widget _statusChip(ReportStatus? status, String label, Color color) {
+    final isSelected = _filterStatus == status;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight:
+                isSelected ? FontWeight.w700 : FontWeight.normal,
+            color: isSelected ? Colors.white : color,
+          ),
+        ),
+        selected: isSelected,
+        onSelected: (_) => setState(() => _filterStatus = status),
+        selectedColor: color,
+        checkmarkColor: Colors.white,
+        backgroundColor: color.withValues(alpha: 0.1),
+        side: BorderSide(
+          color: isSelected ? color : color.withValues(alpha: 0.4),
+        ),
+        showCheckmark: false,
+        padding:
+            const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      ),
+    );
   }
 }

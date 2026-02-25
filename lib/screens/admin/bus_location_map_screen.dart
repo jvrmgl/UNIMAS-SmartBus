@@ -75,8 +75,6 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Bus ${widget.bus.busNumber} — Location'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
       ),
       body: Consumer2<BusProvider, RouteProvider>(
         builder: (context, busProvider, routeProvider, _) {

@@ -210,6 +210,30 @@ async function sendToToken(fcmToken, title, body, data = {}) {
   }
 }
 
+/** Read notification template from Firestore; returns defaults on failure. */
+async function getTemplate(type, defaultTitle, defaultBody) {
+  try {
+    const doc = await admin.firestore()
+      .collection('notification_templates')
+      .doc(type)
+      .get();
+    if (doc.exists) {
+      const d = doc.data();
+      return { title: d.title || defaultTitle, body: d.body || defaultBody };
+    }
+  } catch (e) {
+    console.warn('getTemplate error:', e.message);
+  }
+  return { title: defaultTitle, body: defaultBody };
+}
+
+/** Replace {key} placeholders in a template string with values from vars. */
+function fillTemplate(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (_, key) =>
+    vars[key] !== undefined ? String(vars[key]) : `{${key}}`
+  );
+}
+
 // ── 1. Approaching-bus notifications ─────────────────────────────────────────
 // Runs every 2 minutes. For each student waiting at a stop, checks if any
 // active bus is within 500 m. If so, sends an FCM push and marks the
@@ -231,6 +255,12 @@ exports.checkApproachingBuses = functions
 
     const buses = busesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    // Load template once outside the loop to avoid per-student DB reads.
+    const approachingTmpl = await getTemplate(
+      'bus_approaching',
+      '\uD83D\uDE8C Bus is approaching!',
+      'Bus {busNumber} ({regNumber}) is approaching {stopName}'
+    );
 
     for (const waitDoc of waitingSnap.docs) {
       const w = waitDoc.data();
@@ -245,8 +275,12 @@ exports.checkApproachingBuses = functions
         if (dist <= 0.5) {
           const ok = await sendToToken(
             w.fcmToken,
-            '🚌 Bus is approaching!',
-            `Bus ${bus.busNumber} (${bus.registrationNumber}) is approaching ${w.stopName}`,
+            fillTemplate(approachingTmpl.title, {}),
+            fillTemplate(approachingTmpl.body, {
+              busNumber: bus.busNumber,
+              regNumber: bus.registrationNumber,
+              stopName: w.stopName,
+            }),
             { type: 'bus_approaching', busId: bus.id }
           );
           if (ok) {
@@ -280,6 +314,13 @@ exports.sendTapOutReminders = functions
       .where('tappedInAt', '<=', thirtyMinAgo)
       .get();
 
+    // Load template once before the loop.
+    const tapOutTmpl = await getTemplate(
+      'tap_out_reminder',
+      '\u23F0 Still on the bus?',
+      "You've been on the bus for {elapsedMin} minutes. Tap out when you arrive!"
+    );
+
     for (const doc of snap.docs) {
       const session = doc.data();
 
@@ -299,8 +340,8 @@ exports.sendTapOutReminders = functions
       );
       const ok = await sendToToken(
         tokenDoc.data().fcmToken,
-        '⏰ Still on the bus?',
-        `You've been on the bus for ${elapsedMin} minutes. Tap out when you arrive!`,
+        fillTemplate(tapOutTmpl.title, {}),
+        fillTemplate(tapOutTmpl.body, { elapsedMin }),
         { type: 'tap_out_reminder', busId: session.busId }
       );
       if (ok) {
@@ -328,6 +369,13 @@ exports.sendDriverShiftReminders = functions
       .collection('buses')
       .where('isActive', '==', true)
       .get();
+
+    // Load template once before the loop.
+    const shiftReminderTmpl = await getTemplate(
+      'shift_reminder',
+      '\uD83D\uDE8C Did you forget to end your shift?',
+      'Bus {busNumber} has been active with no GPS update for over an hour. Please end your shift if you are done.'
+    );
 
     for (const doc of snap.docs) {
       const bus = doc.data();
@@ -361,8 +409,8 @@ exports.sendDriverShiftReminders = functions
 
       const ok = await sendToToken(
         tokenDoc.data().fcmToken,
-        '🚌 Did you forget to end your shift?',
-        `Bus ${bus.busNumber} has been active with no GPS update for over an hour. Please end your shift if you are done.`,
+        fillTemplate(shiftReminderTmpl.title, {}),
+        fillTemplate(shiftReminderTmpl.body, { busNumber: bus.busNumber }),
         { type: 'shift_reminder', busId: doc.id }
       );
       if (ok) {
@@ -371,5 +419,52 @@ exports.sendDriverShiftReminders = functions
         });
       }
     }
+    return null;
+  });
+
+// ── 4. Bus activated by admin → notify assigned driver ────────────────────────
+// Triggers whenever a bus document is updated. When isActive flips false → true
+// and a driver is assigned, sends an FCM push so the driver knows their shift
+// has been started remotely — even if the app is closed.
+exports.onBusActivated = functions
+  .region('asia-southeast1')
+  .firestore.document('buses/{busId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after  = change.after.data();
+
+    // Only act when isActive flips false → true
+    if (before.isActive === after.isActive) return null;
+    if (!after.isActive) return null;
+
+    const driverId = after.driverId;
+    if (!driverId) return null;
+
+    // Look up the driver FCM token (saved under their userId)
+    const tokenDoc = await admin.firestore()
+      .collection('device_tokens')
+      .doc(driverId)
+      .get();
+    if (!tokenDoc.exists || !tokenDoc.data().fcmToken) return null;
+
+    const adminName = after.activatedByAdminName || 'Admin';
+    const busNumber = after.busNumber || 'your bus';
+    const shiftStartedTmpl = await getTemplate(
+      'shift_started',
+      '\uD83D\uDE8C Your shift has started!',
+      '{adminName} has activated Bus {busNumber}. Tap to begin driving.'
+    );
+
+    await sendToToken(
+      tokenDoc.data().fcmToken,
+      fillTemplate(shiftStartedTmpl.title, {}),
+      fillTemplate(shiftStartedTmpl.body, { adminName, busNumber }),
+      {
+        type: 'shift_started',
+        busId: context.params.busId,
+        adminName: adminName,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      }
+    );
     return null;
   });

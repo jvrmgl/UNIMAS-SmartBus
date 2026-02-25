@@ -7,6 +7,7 @@ import '../../providers/route_provider.dart';
 import '../../constants/app_theme.dart';
 import '../../models/report_model.dart';
 import '../../services/firestore_service.dart';
+import '../../widgets/common_widgets.dart';
 import 'reports_management_screen.dart';
 import 'manage_schedule_screen.dart';
 import 'buses_management_screen.dart';
@@ -37,79 +38,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _showNotificationsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Notifications'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final visibleAnnouncements =
-                    announcementProvider.visibleAnnouncementsFor('admin');
-                if (announcementProvider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (visibleAnnouncements.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No announcements'),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: visibleAnnouncements.length,
-                  itemBuilder: (context, index) {
-                    final announcement = visibleAnnouncements[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(announcement.title,
-                                style:
-                                    Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            Text(announcement.description,
-                                style: Theme.of(context).textTheme.bodyMedium),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final hasVisibleNotifications =
-                    announcementProvider.hasVisibleAnnouncementsFor('admin');
-                return TextButton(
-                  onPressed: hasVisibleNotifications
-                      ? () {
-                          announcementProvider.clearAnnouncementsFor('admin');
-                          Navigator.pop(context);
-                        }
-                      : null,
-                  child: const Text('Clear Notifications'),
-                );
-              },
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showAppNotificationsSheet(context, 'admin');
   }
 
   @override
@@ -159,8 +88,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 final name =
                     authProvider.currentUser?.fullName ?? 'Admin';
                 return Container(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                  color: AppTheme.primaryColor,
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppTheme.primaryColor,
+                        Color(0xFF0D47A1),
+                      ],
+                    ),
+                  ),
                   width: double.infinity,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -240,38 +178,61 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
                                     return Column(
                                       children: [
+                                        // Row 1: Buses + Routes
                                         Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceAround,
                                           children: [
-                                            _buildOverviewStat(
-                                              icon: Icons.directions_bus,
-                                              value: '$activeBuses/$totalBuses',
-                                              label: 'Buses\nActive/Total',
-                                              color: Colors.blue,
+                                            Expanded(
+                                              child: _buildOverviewStat(
+                                                icon: Icons.directions_bus,
+                                                value: '$activeBuses/$totalBuses',
+                                                label: 'Buses Active/Total',
+                                                color: Colors.blue,
+                                              ),
                                             ),
-                                            _buildDivider(),
-                                            _buildOverviewStat(
-                                              icon: Icons.route,
-                                              value: totalRoutes.toString(),
-                                              label: 'Routes',
-                                              color: Colors.green,
+                                            Container(
+                                              width: 1,
+                                              height: 64,
+                                              color: Theme.of(context).colorScheme.outlineVariant,
                                             ),
-                                            _buildDivider(),
-                                            _buildOverviewStat(
-                                              icon: Icons.people,
-                                              value: passengersToday.toString(),
-                                              label: 'Passengers\nToday',
-                                              color: Colors.orange,
+                                            Expanded(
+                                              child: _buildOverviewStat(
+                                                icon: Icons.route,
+                                                value: totalRoutes.toString(),
+                                                label: 'Routes',
+                                                color: Colors.green,
+                                              ),
                                             ),
-                                            _buildDivider(),
-                                            _buildOverviewStat(
-                                              icon: Icons.report_problem,
-                                              value: pending.toString(),
-                                              label: 'Pending\nReports',
-                                              color: pending > 0
-                                                  ? Colors.red
-                                                  : Colors.grey,
+                                          ],
+                                        ),
+                                        Divider(
+                                          height: 1,
+                                          color: Theme.of(context).colorScheme.outlineVariant,
+                                        ),
+                                        // Row 2: Passengers + Pending
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: _buildOverviewStat(
+                                                icon: Icons.people,
+                                                value: passengersToday.toString(),
+                                                label: 'Passengers Today',
+                                                color: Colors.orange,
+                                              ),
+                                            ),
+                                            Container(
+                                              width: 1,
+                                              height: 64,
+                                              color: Theme.of(context).colorScheme.outlineVariant,
+                                            ),
+                                            Expanded(
+                                              child: _buildOverviewStat(
+                                                icon: Icons.report_problem,
+                                                value: pending.toString(),
+                                                label: 'Pending Reports',
+                                                color: pending > 0
+                                                    ? Colors.red
+                                                    : Colors.grey,
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -317,7 +278,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
-            Padding(
+                  Padding(
               padding: const EdgeInsets.all(16),
               child: GridView.count(
                 crossAxisCount: 3,
@@ -327,58 +288,76 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 crossAxisSpacing: 12,
                 childAspectRatio: 0.82,
                 children: [
-                  _buildAdminCard(
-                    icon: Icons.directions_bus,
-                    title: 'Buses',
-                    color: Colors.blue,
-                    onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                const BusesManagementScreen())),
+                  FadeSlideIn(
+                    delay: const Duration(milliseconds: 0),
+                    child: _buildAdminCard(
+                      icon: Icons.directions_bus,
+                      title: 'Buses',
+                      color: Colors.blue,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const BusesManagementScreen())),
+                    ),
                   ),
-                  _buildAdminCard(
-                    icon: Icons.people,
-                    title: 'Drivers',
-                    color: Colors.teal,
-                    onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                const DriversManagementScreen())),
+                  FadeSlideIn(
+                    delay: const Duration(milliseconds: 60),
+                    child: _buildAdminCard(
+                      icon: Icons.people,
+                      title: 'Drivers',
+                      color: Colors.teal,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const DriversManagementScreen())),
+                    ),
                   ),
-                  _buildAdminCard(
-                    icon: Icons.route,
-                    title: 'Routes',
-                    color: Colors.green,
-                    onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                const RoutesManagementScreen())),
+                  FadeSlideIn(
+                    delay: const Duration(milliseconds: 120),
+                    child: _buildAdminCard(
+                      icon: Icons.route,
+                      title: 'Routes',
+                      color: Colors.green,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const RoutesManagementScreen())),
+                    ),
                   ),
-                  _buildAdminCard(
-                    icon: Icons.schedule,
-                    title: 'Schedules',
-                    color: Colors.purple,
-                    onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                const ManageScheduleScreen())),
+                  FadeSlideIn(
+                    delay: const Duration(milliseconds: 180),
+                    child: _buildAdminCard(
+                      icon: Icons.schedule,
+                      title: 'Schedules',
+                      color: Colors.purple,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const ManageScheduleScreen())),
+                    ),
                   ),
-                  _buildAdminCard(
-                    icon: Icons.notifications,
-                    title: 'Notifications',
-                    color: Colors.orange,
-                    onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                const NotificationsManagementScreen())),
+                  FadeSlideIn(
+                    delay: const Duration(milliseconds: 240),
+                    child: _buildAdminCard(
+                      icon: Icons.notifications,
+                      title: 'Notifications',
+                      color: Colors.orange,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const NotificationsManagementScreen())),
+                    ),
                   ),
-                  _buildAdminCard(
-                    icon: Icons.report,
-                    title: 'Reports',
-                    color: Colors.red,
-                    onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) => ReportsManagementScreen())),
+                  FadeSlideIn(
+                    delay: const Duration(milliseconds: 300),
+                    child: _buildAdminCard(
+                      icon: Icons.report,
+                      title: 'Reports',
+                      color: Colors.red,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => ReportsManagementScreen())),
+                    ),
                   ),
                 ],
               ),
@@ -395,37 +374,42 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required String label,
     required Color color,
   }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: 28),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: color,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 22),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey[700],
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDivider() {
-    return Container(
-      height: 48,
-      width: 1,
-      color: Colors.grey.shade200,
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              height: 1.3,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 
@@ -436,25 +420,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     VoidCallback? onTap,
   }) {
     return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
+                  color: color.withValues(alpha: 0.13),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 26, color: color),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 title,
                 style: const TextStyle(

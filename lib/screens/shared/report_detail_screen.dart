@@ -27,6 +27,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   final DeviceService _deviceService = DeviceService();
   bool _isSending = false;
   bool _isUpdating = false;
+  bool _isStatusPanelExpanded = false;
   late ReportStatus _selectedStatus;
   late Report _currentReport;
   StreamSubscription<Report?>? _reportSubscription;
@@ -285,28 +286,61 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
             ),
           ),
           if (widget.senderType == ReportMessageSender.admin)
-            Padding(
-              padding: const EdgeInsets.all(16),
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              child: InkWell(
+                onTap: () => setState(
+                    () => _isStatusPanelExpanded = !_isStatusPanelExpanded),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.admin_panel_settings_outlined,
+                          size: 16,
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Update Report Status',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        _isStatusPanelExpanded
+                            ? Icons.keyboard_arrow_down
+                            : Icons.keyboard_arrow_up,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (widget.senderType == ReportMessageSender.admin &&
+              _isStatusPanelExpanded)
+            Container(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Update Status',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
                   DropdownButtonFormField<ReportStatus>(
                     value: _selectedStatus,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      isDense: true,
+                    ),
                     items: ReportStatus.values
                         .map(
                           (status) => DropdownMenuItem(
                             value: status,
                             child: Text(
-                              status
-                                  .toString()
-                                  .split('.')
-                                  .last
-                                  .toUpperCase(),
+                              status.toString().split('.').last.toUpperCase(),
                             ),
                           ),
                         )
@@ -319,12 +353,13 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _adminNotesController,
-                    maxLines: 3,
+                    maxLines: 2,
                     decoration: const InputDecoration(
                       labelText: 'Admin Notes (optional)',
+                      isDense: true,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -333,7 +368,8 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                           ? const SizedBox(
                               height: 18,
                               width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Text('Save Status'),
                     ),
@@ -341,6 +377,25 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                 ],
               ),
             ),
+          // Chat header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.chat_bubble_outline,
+                    size: 15,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(
+                  'Chatting with Reporter',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color:
+                            Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
           Expanded(
             child: StreamBuilder<List<ReportMessage>>(
               stream: _firestoreService.getReportMessagesStream(
@@ -349,14 +404,32 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
               builder: (context, snapshot) {
                 final messages = snapshot.data ?? [];
                 if (messages.isEmpty) {
-                  return const Center(child: Text('No replies yet'));
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline,
+                            size: 48,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant),
+                        const SizedBox(height: 12),
+                        Text('No replies yet',
+                            style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant)),
+                      ],
+                    ),
+                  );
                 }
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final message = messages[index];
-                    final isAdmin = message.senderType == ReportMessageSender.admin;
+                    final isAdmin =
+                        message.senderType == ReportMessageSender.admin;
                     return Align(
                       alignment: isAdmin
                           ? Alignment.centerRight
@@ -364,13 +437,24 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(12),
+                        constraints: BoxConstraints(
+                          maxWidth:
+                              MediaQuery.of(context).size.width * 0.75,
+                        ),
                         decoration: BoxDecoration(
                           color: isAdmin
-                              ? Theme.of(context).colorScheme.primaryContainer
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
                               : Theme.of(context)
                                   .colorScheme
                                   .secondaryContainer,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(12),
+                            topRight: const Radius.circular(12),
+                            bottomLeft: Radius.circular(isAdmin ? 12 : 2),
+                            bottomRight: Radius.circular(isAdmin ? 2 : 12),
+                          ),
                         ),
                         child: Text(message.message),
                       ),
@@ -388,21 +472,49 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                   Expanded(
                     child: TextField(
                       controller: _messageController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Type a reply...',
+                        filled: true,
+                        fillColor: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    icon: _isSending
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                    onPressed: _isSending ? null : _sendMessage,
+                  Material(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _isSending ? null : _sendMessage,
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: _isSending
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimary,
+                                ),
+                              )
+                            : Icon(Icons.send,
+                                size: 20,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onPrimary),
+                      ),
+                    ),
                   ),
                 ],
               ),

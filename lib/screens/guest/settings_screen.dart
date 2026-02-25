@@ -8,6 +8,7 @@ import '../../models/user_model.dart';
 import '../../providers/theme_provider.dart';
 import '../../constants/app_theme.dart';
 import '../shared/edit_profile_screen.dart';
+import '../../widgets/common_widgets.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -105,15 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context, prefs, _) => Card(
         clipBehavior: Clip.hardEdge,
         child: ExpansionTile(
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.notifications_active,
-                color: Colors.white, size: 20),
-          ),
+          leading: const Icon(Icons.notifications_outlined),
           title: const Text('Smart Notifications',
               style: TextStyle(fontWeight: FontWeight.w600)),
           subtitle: const Text('Push alerts & auto-detect preferences'),
@@ -170,82 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showNotificationsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Notifications'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final visibleAnnouncements =
-                    announcementProvider.visibleAnnouncementsFor('student');
-                if (announcementProvider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (visibleAnnouncements.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No announcements'),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: visibleAnnouncements.length,
-                  itemBuilder: (context, index) {
-                    final announcement = visibleAnnouncements[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              announcement.title,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              announcement.description,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final hasVisibleNotifications =
-                    announcementProvider.hasVisibleAnnouncementsFor('student');
-                return TextButton(
-                  onPressed: hasVisibleNotifications
-                      ? () {
-                          announcementProvider.clearAnnouncementsFor('student');
-                          Navigator.pop(context);
-                        }
-                      : null,
-                  child: const Text('Clear Notifications'),
-                );
-              },
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showAppNotificationsSheet(context, 'student');
   }
 
   @override
@@ -301,15 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 24),
                 _buildSectionTitle('Appearance'),
-                Card(
-                  child: SwitchListTile(
-                    title: const Text('Dark mode'),
-                    value: themeProvider.isDarkMode,
-                    onChanged: (value) {
-                      themeProvider.setDarkMode(value);
-                    },
-                  ),
-                ),
+                _buildThemeSetting(themeProvider),
                 const SizedBox(height: 24),
                 _buildSectionTitle('Account'),
                 Container(
@@ -401,29 +311,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildNotificationSettings(isDriver: false),
                   const SizedBox(height: 24),
                   _buildSectionTitle('Appearance'),
-                  Card(
-                    child: SwitchListTile(
-                      title: const Text('Dark mode'),
-                      value: themeProvider.isDarkMode,
-                      onChanged: (value) {
-                        themeProvider.setDarkMode(value);
-                      },
-                    ),
-                  ),
+                  _buildThemeSetting(themeProvider),
                   const SizedBox(height: 24),
                   _buildSectionTitle('Staff Login'),
                   Card(
                     clipBehavior: Clip.hardEdge,
                     child: ExpansionTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.badge,
-                            color: Colors.white, size: 20),
-                      ),
+                      leading: const Icon(Icons.badge_outlined),
                       title: const Text(
                         'For drivers and administrators',
                         style: TextStyle(fontWeight: FontWeight.w600),
@@ -522,10 +416,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: Colors.grey,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 4),
@@ -537,6 +431,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Expandable tile that lets the user pick Light / Dark / System.
+  Widget _buildThemeSetting(ThemeProvider themeProvider) {
+    final IconData modeIcon;
+    final String modeLabel;
+    if (themeProvider.isSystemMode) {
+      modeIcon = Icons.settings_brightness;
+      modeLabel = 'System default';
+    } else if (themeProvider.isDarkMode) {
+      modeIcon = Icons.dark_mode;
+      modeLabel = 'Dark';
+    } else {
+      modeIcon = Icons.light_mode;
+      modeLabel = 'Light';
+    }
+    return Card(
+      clipBehavior: Clip.hardEdge,
+      child: ExpansionTile(
+        leading: Icon(modeIcon),
+        title: const Text('App theme'),
+        subtitle: Text('Change app theme  ·  $modeLabel'),
+        children: [
+          _themeOption(themeProvider, ThemeMode.light, Icons.light_mode,
+              'Light', 'Always use light theme'),
+          _themeOption(themeProvider, ThemeMode.dark, Icons.dark_mode,
+              'Dark', 'Always use dark theme'),
+          _themeOption(themeProvider, ThemeMode.system,
+              Icons.settings_brightness, 'System default',
+              'Follow your device settings'),
+        ],
+      ),
+    );
+  }
+
+  Widget _themeOption(ThemeProvider provider, ThemeMode mode, IconData icon,
+      String label, String description) {
+    final isSelected = provider.themeMode == mode;
+    return ListTile(
+      leading: Icon(icon, color: isSelected ? AppTheme.primaryColor : null),
+      title: Text(label),
+      subtitle: Text(description, style: const TextStyle(fontSize: 12)),
+      trailing: isSelected
+          ? Icon(Icons.check_circle, color: AppTheme.primaryColor)
+          : null,
+      onTap: () => provider.setThemeMode(mode),
     );
   }
 

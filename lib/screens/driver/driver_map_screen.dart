@@ -7,6 +7,7 @@ import '../../constants/app_constants.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
+import '../../widgets/common_widgets.dart';
 import '../../providers/driver_shift_provider.dart';
 import '../../models/bus_stop_model.dart';
 import '../../services/location_service.dart';
@@ -78,82 +79,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
   }
 
   void _showNotificationsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Notifications'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final visibleAnnouncements =
-                    announcementProvider.visibleAnnouncementsFor('driver');
-                if (announcementProvider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (visibleAnnouncements.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No announcements'),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: visibleAnnouncements.length,
-                  itemBuilder: (context, index) {
-                    final announcement = visibleAnnouncements[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              announcement.title,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              announcement.description,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final hasVisibleNotifications =
-                    announcementProvider.hasVisibleAnnouncementsFor('driver');
-                return TextButton(
-                  onPressed: hasVisibleNotifications
-                      ? () {
-                          announcementProvider.clearAnnouncementsFor('driver');
-                          Navigator.pop(context);
-                        }
-                      : null,
-                  child: const Text('Clear Notifications'),
-                );
-              },
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showAppNotificationsSheet(context, 'driver');
   }
 
   Set<Marker> _buildMarkers(
@@ -237,8 +163,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
       ),
       body: Stack(
         children: [
-          Consumer2<BusProvider, RouteProvider>(
-            builder: (context, busProvider, routeProvider, _) {
+          Consumer3<BusProvider, RouteProvider, DriverShiftProvider>(
+            builder: (context, busProvider, routeProvider, shiftProvider, _) {
               final markers = _buildMarkers(busProvider, routeProvider);
               return GoogleMap(
                 initialCameraPosition: const CameraPosition(
@@ -247,7 +173,10 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                 ),
                 onMapCreated: (controller) => _mapController.complete(controller),
                 markers: markers,
-                myLocationEnabled: true,
+                // On shift: hide the blue dot — the bus icon from DriverTrackingService
+                // serves as the live position indicator.
+                // Off shift: restore the blue dot so the driver can see themselves.
+                myLocationEnabled: !shiftProvider.isOnShift,
                 myLocationButtonEnabled: false,
               );
             },
@@ -322,7 +251,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
@@ -350,7 +279,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                           Container(
                             width: 1,
                             height: 40,
-                            color: Colors.grey.shade300,
+                            color: Theme.of(context).colorScheme.outlineVariant,
                           ),
                           Expanded(
                             child: _buildCompactStat(
@@ -363,7 +292,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                           Container(
                             width: 1,
                             height: 40,
-                            color: Colors.grey.shade300,
+                            color: Theme.of(context).colorScheme.outlineVariant,
                           ),
                           Expanded(
                             child: _buildCompactStat(
@@ -384,7 +313,9 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.orange.withValues(alpha: 0.12)
+                                : Colors.orange.shade50,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: Colors.orange.shade200,
@@ -472,7 +403,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
           label,
           style: TextStyle(
             fontSize: 11,
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           textAlign: TextAlign.center,
           maxLines: 1,

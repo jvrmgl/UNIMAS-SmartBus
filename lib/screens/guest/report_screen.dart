@@ -158,10 +158,12 @@ class _ReportScreenState extends State<ReportScreen>
         title: const Text('Report an Issue'),
         elevation: 0,
         bottom: TabBar(
-          controller: _tabController,          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
+          controller: _tabController,
           indicatorColor: Colors.white,
-          indicatorWeight: 3,          tabs: const [
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorWeight: 3,
+          tabs: const [
             Tab(text: 'New Report'),
             Tab(text: 'My Reports'),
           ],
@@ -315,7 +317,7 @@ class _ReportScreenState extends State<ReportScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.report_off, size: 64, color: Colors.grey),
+                    Icon(Icons.report_off, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     const SizedBox(height: 16),
                     Text(
                       'No reports yet',
@@ -325,7 +327,7 @@ class _ReportScreenState extends State<ReportScreen>
                     Text(
                       'Submit a report from the other tab',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],

@@ -15,6 +15,7 @@ import '../../models/report_model.dart';
 import '../../services/firestore_service.dart';
 import '../../services/location_service.dart';
 import '../../utils/map_marker_helper.dart';
+import '../../widgets/common_widgets.dart';
 
 class AdminMapScreen extends StatefulWidget {
   const AdminMapScreen({super.key});
@@ -32,14 +33,16 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   BitmapDescriptor? _busMarkerIcon;
   BitmapDescriptor? _busInactiveMarkerIcon;
   BitmapDescriptor? _stopMarkerIcon;
+  late RouteProvider _routeProvider;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _routeProvider = context.read<RouteProvider>();
+      _routeProvider.addListener(_onRouteProviderUpdate);
       _loadData();
       _loadMarkerIcons();
-      context.read<RouteProvider>().addListener(_onRouteProviderUpdate);
     });
   }
 
@@ -57,7 +60,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
 
   @override
   void dispose() {
-    context.read<RouteProvider>().removeListener(_onRouteProviderUpdate);
+    _routeProvider.removeListener(_onRouteProviderUpdate);
     super.dispose();
   }
 
@@ -423,82 +426,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   }
 
   void _showNotificationsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Notifications'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final visibleAnnouncements =
-                    announcementProvider.visibleAnnouncementsFor('admin');
-                if (announcementProvider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (visibleAnnouncements.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No announcements'),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: visibleAnnouncements.length,
-                  itemBuilder: (context, index) {
-                    final announcement = visibleAnnouncements[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              announcement.title,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              announcement.description,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            Consumer<AnnouncementProvider>(
-              builder: (context, announcementProvider, _) {
-                final hasVisibleNotifications =
-                    announcementProvider.hasVisibleAnnouncementsFor('admin');
-                return TextButton(
-                  onPressed: hasVisibleNotifications
-                      ? () {
-                          announcementProvider.clearAnnouncementsFor('admin');
-                          Navigator.pop(context);
-                        }
-                      : null,
-                  child: const Text('Clear Notifications'),
-                );
-              },
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showAppNotificationsSheet(context, 'admin');
   }
 
   Set<Marker> _buildMarkers(
@@ -570,11 +498,12 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
               ),
               textAlign: TextAlign.center,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              softWrap: true,
             ),
             if (onTap != null)
               Icon(Icons.keyboard_arrow_down,
@@ -685,13 +614,17 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                 return Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 16,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
