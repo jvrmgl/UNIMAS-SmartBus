@@ -757,48 +757,79 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                 final entry = e.value;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
-                    leading: CircleAvatar(
-                      backgroundColor: AppTheme.primaryColor,
-                      child: const Icon(Icons.bus_alert,
-                          color: Colors.white, size: 20),
-                    ),
-                    title: Text(entry.stop.stopName,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(
-                        '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // In-app: switch to Map tab and zoom to stop
-                        Tooltip(
-                          message: 'View on map',
-                          child: IconButton(
-                            icon: Icon(Icons.map_outlined,
-                                color: AppTheme.primaryColor),
-                            onPressed: () {
-                              context
-                                  .read<DashboardNavProvider>()
-                                  .navigateToMapWithFocus(
-                                    entry.stop.latitude,
-                                    entry.stop.longitude,
-                                  );
-                            },
-                          ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ListTile(
+                        contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        leading: CircleAvatar(
+                          backgroundColor: AppTheme.primaryColor,
+                          child: const Icon(Icons.bus_alert,
+                              color: Colors.white, size: 20),
                         ),
-                        // External: open navigation app
-                        Tooltip(
-                          message: 'Navigate there',
-                          child: IconButton(
-                            icon: Icon(Icons.navigation,
-                                color: Colors.green.shade600),
-                            onPressed: () => _guideMeThere(entry.stop),
-                          ),
+                        title: Text(entry.stop.stopName,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                            '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
+                      ),
+                      // Card actions row
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                        child: Row(
+                          children: [
+                            TextButton.icon(
+                              icon: Icon(Icons.map_outlined,
+                                  size: 16, color: AppTheme.primaryColor),
+                              label: Text('View on Map',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.primaryColor)),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () {
+                                context
+                                    .read<DashboardNavProvider>()
+                                    .navigateToMapWithFocus(
+                                      entry.stop.latitude,
+                                      entry.stop.longitude,
+                                    );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Showing ${entry.stop.stopName} on map'),
+                                    duration: const Duration(seconds: 2),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 4),
+                            TextButton.icon(
+                              icon: Icon(Icons.navigation,
+                                  size: 16,
+                                  color: Colors.green.shade600),
+                              label: Text('Navigate',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green.shade600)),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () =>
+                                  _guideMeThere(entry.stop),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 );
               }),

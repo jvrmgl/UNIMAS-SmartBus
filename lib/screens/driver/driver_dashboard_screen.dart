@@ -21,6 +21,7 @@ class DriverDashboardScreen extends StatefulWidget {
 
 class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   bool _isOccupancyEditorOpen = false;
+  bool _showRouteError = false;
   final FirestoreService _firestoreService = FirestoreService();
 
   @override
@@ -517,10 +518,12 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                 if (shiftProvider.isOnShift) {
                   _endShift(shiftProvider);
                 } else if (shiftProvider.assignedBus?.assignedRoute == null) {
+                  setState(() => _showRouteError = true);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Please select a route before starting your shift'),
                       backgroundColor: Colors.orange,
+                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                 } else {
@@ -582,7 +585,12 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         return Card(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
+            side: BorderSide(
+              color: _showRouteError
+                  ? Colors.red
+                  : Colors.orange.withValues(alpha: 0.4),
+              width: _showRouteError ? 2.0 : 1.0,
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -641,10 +649,12 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                     if (!mounted) return;
                     if (err == null) {
                       busProvider.fetchBuses();
-                      messenger.showSnackBar(
+                      setState(() => _showRouteError = false);
+                    messenger.showSnackBar(
                         const SnackBar(
-                          content: Text('Route selected'),
+                          content: Text('Route selected — you can now start your shift'),
                           backgroundColor: Colors.green,
+                          behavior: SnackBarBehavior.floating,
                         ),
                       );
                     } else {
