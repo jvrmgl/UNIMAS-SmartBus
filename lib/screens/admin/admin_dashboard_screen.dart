@@ -52,27 +52,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             builder: (context, announcementProvider, _) {
               final hasUnread =
                   announcementProvider.hasVisibleAnnouncementsFor('admin');
-              return Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications),
-                    onPressed: _showNotificationsDialog,
-                  ),
-                  if (hasUnread)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                            minWidth: 8, minHeight: 8),
-                      ),
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications_outlined),
+                      onPressed: _showNotificationsDialog,
                     ),
-                ],
+                    if (hasUnread)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                              minWidth: 8, minHeight: 8),
+                        ),
+                      ),
+                  ],
+                ),
               );
             },
           ),

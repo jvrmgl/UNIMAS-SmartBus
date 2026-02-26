@@ -16,7 +16,7 @@ class RouteDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(route.routeName),
+        title: const Text('Route Details'),
         elevation: 0,
       ),
       body: Consumer2<RouteProvider, BusProvider>(
@@ -36,11 +36,11 @@ class RouteDetailScreen extends StatelessWidget {
               .cast<BusStop>()
               .toList();
 
-          // Find bus currently on this route
+          // Find bus currently on this route (only when actively on shift)
           Bus? currentBus;
           try {
             currentBus = busProvider.buses.firstWhere(
-              (bus) => bus.assignedRoute == route.routeId,
+              (bus) => bus.assignedRoute == route.routeId && bus.isActive,
             );
           } catch (_) {
             currentBus = null;

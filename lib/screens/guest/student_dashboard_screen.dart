@@ -31,7 +31,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   late TabController _tabController;
   final FirestoreService _firestoreService = FirestoreService();
   DashboardNavProvider? _dashboardNavProvider;
-  int? _expandedStopIndex;
+  // no expansion state needed
 
   @override
   void initState() {
@@ -79,31 +79,34 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
             builder: (context, announcementProvider, _) {
               final hasUnread =
                   announcementProvider.hasVisibleAnnouncementsFor('student');
-              return Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications),
-                    onPressed: () {
-                      _showNotificationsDialog();
-                    },
-                  ),
-                  if (hasUnread)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications_outlined),
+                      onPressed: () {
+                        _showNotificationsDialog();
+                      },
+                    ),
+                    if (hasUnread)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
                         constraints: const BoxConstraints(
                           minWidth: 8,
                           minHeight: 8,
                         ),
                       ),
                     ),
-                ],
+                  ],
+                ),
               );
             },
           ),
@@ -152,12 +155,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           // Tab Bar
           TabBar(
             controller: _tabController,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
             indicatorColor: AppTheme.primaryColor,
             labelColor: AppTheme.primaryColor,
             unselectedLabelColor: Colors.grey,
-            labelStyle: const TextStyle(fontSize: 12),
+            labelStyle: const TextStyle(fontSize: 11),
             tabs: const [
               Tab(icon: Icon(Icons.schedule, size: 20), text: 'Schedules'),
               Tab(icon: Icon(Icons.directions_bus, size: 20), text: 'Buses'),
@@ -753,56 +754,53 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                 ),
               ),
               ...top3Stops.asMap().entries.map((e) {
-                final i = e.key;
                 final entry = e.value;
                 return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    clipBehavior: Clip.hardEdge,
-                    child: ExpansionTile(
-                      key: ValueKey(
-                          _expandedStopIndex == i ? 'open_$i' : 'closed_$i'),
-                      initiallyExpanded: _expandedStopIndex == i,
-                      onExpansionChanged: (expanded) {
-                        setState(() {
-                          _expandedStopIndex = expanded ? i : null;
-                        });
-                      },
-                      leading: CircleAvatar(
-                        backgroundColor: AppTheme.primaryColor,
-                        child: const Icon(Icons.bus_alert,
-                            color: Colors.white, size: 20),
-                      ),
-                      title: Text(entry.stop.stopName,
-                          style:
-                              const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(
-                          '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    leading: CircleAvatar(
+                      backgroundColor: AppTheme.primaryColor,
+                      child: const Icon(Icons.bus_alert,
+                          color: Colors.white, size: 20),
+                    ),
+                    title: Text(entry.stop.stopName,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(
+                        '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primaryColor,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: () => _guideMeThere(entry.stop),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.navigation, size: 18),
-                                  SizedBox(width: 8),
-                                  Text('Guide Me There'),
-                                ],
-                              ),
-                            ),
+                        // In-app: switch to Map tab and zoom to stop
+                        Tooltip(
+                          message: 'View on map',
+                          child: IconButton(
+                            icon: Icon(Icons.map_outlined,
+                                color: AppTheme.primaryColor),
+                            onPressed: () {
+                              context
+                                  .read<DashboardNavProvider>()
+                                  .navigateToMapWithFocus(
+                                    entry.stop.latitude,
+                                    entry.stop.longitude,
+                                  );
+                            },
+                          ),
+                        ),
+                        // External: open navigation app
+                        Tooltip(
+                          message: 'Navigate there',
+                          child: IconButton(
+                            icon: Icon(Icons.navigation,
+                                color: Colors.green.shade600),
+                            onPressed: () => _guideMeThere(entry.stop),
                           ),
                         ),
                       ],
                     ),
-                  );
+                  ),
+                );
               }),
               const Divider(),
               const SizedBox(height: 4),
