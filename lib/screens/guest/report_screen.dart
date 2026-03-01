@@ -184,7 +184,7 @@ class _ReportScreenState extends State<ReportScreen>
       padding: const EdgeInsets.all(16),
       children: [
         DropdownButtonFormField<ReportCategory>(
-          value: _category,
+          initialValue: _category,
           decoration: const InputDecoration(
             labelText: 'Category',
           ),

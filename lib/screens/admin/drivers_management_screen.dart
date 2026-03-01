@@ -445,7 +445,7 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                 const Text('No available buses to assign.')
               else
                 DropdownButtonFormField<String>(
-                  value: selectedBusId,
+                  initialValue: selectedBusId,
                   decoration: const InputDecoration(
                     labelText: 'Select Bus',
                     prefixIcon: Icon(Icons.directions_bus),

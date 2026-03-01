@@ -331,7 +331,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                   Text('Assign a driver to Bus ${bus.busNumber}'),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
-                    value: selectedDriverId,
+                    initialValue: selectedDriverId,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Driver',
@@ -418,7 +418,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
               Text('Assign a route to Bus ${bus.busNumber}'),
               const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
-                value: selectedRouteId,
+                initialValue: selectedRouteId,
                 decoration: const InputDecoration(
                   labelText: 'Route',
                   prefixIcon: Icon(Icons.route),

@@ -480,7 +480,7 @@ class _NotificationsManagementScreenState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<AnnouncementType>(
-                    value: selectedType,
+                    initialValue: selectedType,
                     decoration: const InputDecoration(
                       labelText: 'Notification Type',
                       border: OutlineInputBorder(),
@@ -633,7 +633,7 @@ class _NotificationsManagementScreenState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<AnnouncementType>(
-                    value: selectedType,
+                    initialValue: selectedType,
                     decoration: const InputDecoration(labelText: 'Type'),
                     items: AnnouncementType.values.map((type) {
                       return DropdownMenuItem(

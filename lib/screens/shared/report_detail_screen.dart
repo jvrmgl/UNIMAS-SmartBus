@@ -329,7 +329,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DropdownButtonFormField<ReportStatus>(
-                    value: _selectedStatus,
+                    initialValue: _selectedStatus,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Status',

@@ -708,7 +708,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             .toList();
 
         int? currentStopIndex;
-        if (assignedBus != null && stops.isNotEmpty) {
+        if (assignedBus != null && assignedBus.isActive && stops.isNotEmpty) {
           double minDistance = double.infinity;
           for (int i = 0; i < stops.length; i++) {
             final distance = _calculateDistance(

@@ -168,7 +168,7 @@ class AppTheme {
         hintStyle: const TextStyle(color: textTertiary, fontSize: 14),
       ),
       // Elevation 0 with a border — eliminates the ghost top-shadow line.
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 0,
         shadowColor: Colors.transparent,
         margin: EdgeInsets.zero,
@@ -189,7 +189,7 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         elevation: 0,
         shadowColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
@@ -357,7 +357,7 @@ class AppTheme {
         hintStyle: const TextStyle(color: Color(0xFF636366), fontSize: 14),
       ),
       // Elevation 0 + subtle border — no ghost top-shadow in dark mode.
-      cardTheme: const CardTheme(
+      cardTheme: const CardThemeData(
         elevation: 0,
         shadowColor: Colors.transparent,
         margin: EdgeInsets.zero,
@@ -378,7 +378,7 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
-      dialogTheme: const DialogTheme(
+      dialogTheme: const DialogThemeData(
         elevation: 0,
         shadowColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
