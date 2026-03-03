@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'location_service.dart';
 
 /// Service to handle continuous GPS tracking for drivers
@@ -23,13 +24,13 @@ class DriverTrackingService {
   }) async {
     // Prevent multiple tracking instances
     if (_isTracking && _currentBusId == busId) {
-      print('⚠️ Tracking already active for bus $busId');
+      debugPrint('⚠️ Tracking already active for bus $busId');
       return;
     }
 
     // Stop any existing tracking first
     if (_isTracking) {
-      print('🛑 Stopping previous tracking before starting new one');
+      debugPrint('🛑 Stopping previous tracking before starting new one');
       stopTracking();
       await Future.delayed(const Duration(milliseconds: 500));
     }
@@ -60,7 +61,7 @@ class DriverTrackingService {
 
       _isTracking = true;
       _currentBusId = busId;
-      print('✅ Starting GPS tracking for bus $busId');
+      debugPrint('✅ Starting GPS tracking for bus $busId');
 
       // Start listening to position updates (single stream only)
       _positionSubscription = LocationService.getPositionStream(
@@ -76,20 +77,20 @@ class DriverTrackingService {
               latitude: position.latitude,
               longitude: position.longitude,
             );
-            print('📍 Location updated: ${position.latitude}, ${position.longitude}');
+            debugPrint('📍 Location updated: ${position.latitude}, ${position.longitude}');
           } catch (e) {
-            print('❌ Failed to update location: $e');
+            debugPrint('❌ Failed to update location: $e');
             onError?.call('Failed to update location: $e');
           }
         },
         onError: (error) {
-          print('❌ GPS error: $error');
+          debugPrint('❌ GPS error: $error');
           onError?.call('GPS error: $error');
         },
         cancelOnError: false, // Keep stream alive on errors
       );
     } catch (e) {
-      print('❌ Failed to start tracking: $e');
+      debugPrint('❌ Failed to start tracking: $e');
       _isTracking = false;
       _currentBusId = null;
       onError?.call('Failed to start tracking: $e');
@@ -112,11 +113,11 @@ class DriverTrackingService {
   /// Stop tracking location
   void stopTracking() {
     if (!_isTracking) {
-      print('ℹ️ Tracking already stopped');
+      debugPrint('ℹ️ Tracking already stopped');
       return;
     }
 
-    print('🛑 Stopping GPS tracking for bus $_currentBusId');
+    debugPrint('🛑 Stopping GPS tracking for bus $_currentBusId');
     _positionSubscription?.cancel();
     _positionSubscription = null;
     _isTracking = false;
@@ -125,7 +126,7 @@ class DriverTrackingService {
 
   /// Clean up resources
   void dispose() {
-    print('🧹 Disposing DriverTrackingService');
+    debugPrint('🧹 Disposing DriverTrackingService');
     stopTracking();
   }
 }

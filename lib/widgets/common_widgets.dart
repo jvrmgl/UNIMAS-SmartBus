@@ -473,8 +473,9 @@ class _NotificationsSheet extends StatelessWidget {
                     ),
                     if (hasItems)
                       TextButton.icon(
-                        onPressed: () {
-                          announcementProvider.clearAnnouncementsFor(role);
+                        onPressed: () async {
+                          await announcementProvider.clearAnnouncementsFor(role);
+                          if (!context.mounted) return;
                           Navigator.pop(context);
                         },
                         icon: const Icon(Icons.done_all, size: 16),

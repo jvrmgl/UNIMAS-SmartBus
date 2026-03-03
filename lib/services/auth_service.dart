@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../firebase_options.dart';
 
@@ -86,7 +87,7 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print('Error getting user data: $e');
+      debugPrint('Error getting user data: $e');
       return null;
     }
   }

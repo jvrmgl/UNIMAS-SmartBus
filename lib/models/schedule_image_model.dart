@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class ScheduleImage {
   final String imageId;
   final String imageUrl;
@@ -45,7 +47,7 @@ class ScheduleImage {
       try {
         return (value as dynamic).toDate();
       } catch (e) {
-        print('Error parsing Timestamp: $e');
+        debugPrint('Error parsing Timestamp: $e');
         return DateTime.now();
       }
     }

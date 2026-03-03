@@ -1,4 +1,5 @@
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:io';
 
@@ -19,9 +20,9 @@ class DeviceService {
     try {
       _box = await Hive.openBox(_boxName);
       _isInitialized = true;
-      print('✅ DeviceService initialized successfully');
+      debugPrint('✅ DeviceService initialized successfully');
     } catch (e) {
-      print('❌ Error initializing DeviceService: $e');
+      debugPrint('❌ Error initializing DeviceService: $e');
       rethrow;
     }
   }
@@ -55,7 +56,7 @@ class DeviceService {
         newDeviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
       }
     } catch (e) {
-      print('⚠️ Error getting device info: $e');
+      debugPrint('⚠️ Error getting device info: $e');
       // Fallback to timestamp-based ID if device info fails
       newDeviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
     }

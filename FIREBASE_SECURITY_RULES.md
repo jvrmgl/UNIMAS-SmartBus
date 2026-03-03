@@ -21,12 +21,18 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Buses collection - Allow anyone to update occupancy (tap in/out)
+    // Buses collection
     match /buses/{busId} {
       allow read: if true; // Anyone can read bus data
-      allow create, delete: if request.auth != null && 
+      allow create, delete: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      allow update: if true; // Anyone can update occupancy (for tap in/out)
+      // Unauthenticated users (guests) may only change currentOccupancy (tap in/out).
+      // All other field updates (GPS, isActive, etc.) require authentication.
+      allow update: if (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentOccupancy'])
+      ) || (
+        request.auth != null
+      );
     }
     
     // Routes collection

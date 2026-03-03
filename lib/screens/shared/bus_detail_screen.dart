@@ -43,23 +43,23 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       if (Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
         _deviceId = androidInfo.id; // This is the Android ID
-        print('DEBUG: Android Device ID: $_deviceId');
+        debugPrint('DEBUG: Android Device ID: $_deviceId');
       } else if (Platform.isIOS) {
         final iosInfo = await deviceInfo.iosInfo;
         _deviceId = iosInfo.identifierForVendor; // Unique device ID
-        print('DEBUG: iOS Device ID: $_deviceId');
+        debugPrint('DEBUG: iOS Device ID: $_deviceId');
       }
       
       if (_deviceId != null) {
         await _checkTapInStatus();
       } else {
-        print('DEBUG: Could not get device ID');
+        debugPrint('DEBUG: Could not get device ID');
         if (mounted) {
           setState(() => _isLoading = false);
         }
       }
     } catch (e) {
-      print('DEBUG: Error getting device ID: $e');
+      debugPrint('DEBUG: Error getting device ID: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -71,20 +71,20 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     
     try {
       final activeBusId = await _firestoreService.getDeviceActiveBusId(_deviceId!);
-      print('DEBUG: Checking tap-in status');
-      print('DEBUG: Active bus ID from Firestore: $activeBusId');
-      print('DEBUG: Current bus ID: ${widget.bus.busId}');
-      print('DEBUG: Are they equal? ${activeBusId == widget.bus.busId}');
+      debugPrint('DEBUG: Checking tap-in status');
+      debugPrint('DEBUG: Active bus ID from Firestore: $activeBusId');
+      debugPrint('DEBUG: Current bus ID: ${widget.bus.busId}');
+      debugPrint('DEBUG: Are they equal? ${activeBusId == widget.bus.busId}');
       
       if (mounted) {
         setState(() {
           _isTappedIn = activeBusId == widget.bus.busId;
           _isLoading = false;
         });
-        print('DEBUG: After setState - _isTappedIn: $_isTappedIn, _isLoading: $_isLoading');
+        debugPrint('DEBUG: After setState - _isTappedIn: $_isTappedIn, _isLoading: $_isLoading');
       }
     } catch (e) {
-      print('DEBUG: Error checking tap-in status: $e');
+      debugPrint('DEBUG: Error checking tap-in status: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -221,7 +221,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                   child: Builder(
                     builder: (context) {
                       final isBusInactive = !bus.isActive;
-                      print('DEBUG: Rendering buttons - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating, _isLoading: $_isLoading');
+                      debugPrint('DEBUG: Rendering buttons - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating, _isLoading: $_isLoading');
                       return Row(
                         children: [
                           Expanded(
@@ -444,7 +444,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
   }
 
   Future<void> _handleTapIn(Bus bus) async {
-    print('DEBUG: _handleTapIn called');
+    debugPrint('DEBUG: _handleTapIn called');
     
     if (_deviceId == null) {
       _showMessage('Could not identify device');
@@ -493,7 +493,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     }
     // ──────────────────────────────────────────────────────────────────────
 
-    print('DEBUG: Setting _isUpdating to true');
+    debugPrint('DEBUG: Setting _isUpdating to true');
     setState(() => _isUpdating = true);
 
     // Tap in to bus (this will check for existing sessions)
@@ -501,7 +501,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     
     if (tapInResult != null) {
       // Error occurred
-      print('DEBUG: Tap in failed: $tapInResult');
+      debugPrint('DEBUG: Tap in failed: $tapInResult');
       if (mounted) {
         setState(() => _isUpdating = false);
         _showMessage(tapInResult);
@@ -509,7 +509,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       return;
     }
 
-    print('DEBUG: Tap in successful, updating bus occupancy');
+    debugPrint('DEBUG: Tap in successful, updating bus occupancy');
     // Update bus occupancy
     final busUpdateResult = await _firestoreService.updateBusLocation(
       busId: bus.busId,
@@ -521,10 +521,10 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     if (!mounted) return;
 
     if (busUpdateResult == null) {
-      print('DEBUG: Bus update successful');
+      debugPrint('DEBUG: Bus update successful');
       
       // Create student trip
-      print('DEBUG: Creating student trip');
+      debugPrint('DEBUG: Creating student trip');
       await _firestoreService.createStudentTrip(
         deviceId: _deviceId!,
         busId: bus.busId,
@@ -545,10 +545,10 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
           bus.copyWith(currentOccupancy: bus.currentOccupancy + 1),
         );
       }
-      print('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
+      debugPrint('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
       _showMessage('Tapped in successfully!');
     } else {
-      print('DEBUG: Bus update failed: $busUpdateResult');
+      debugPrint('DEBUG: Bus update failed: $busUpdateResult');
       // Rollback the tap in
       await _firestoreService.tapOutFromBus(_deviceId!);
       setState(() => _isUpdating = false);
@@ -557,20 +557,20 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
   }
 
   Future<void> _handleTapOut(Bus bus) async {
-    print('DEBUG: _handleTapOut called');
+    debugPrint('DEBUG: _handleTapOut called');
     
     if (_deviceId == null) {
       _showMessage('Could not identify device');
       return;
     }
     
-    print('DEBUG: Setting _isUpdating to true');
+    debugPrint('DEBUG: Setting _isUpdating to true');
     setState(() => _isUpdating = true);
 
     // Clamp to 0 — occupancy may already be 0 if driver ended shift early
     final newOccupancy = (bus.currentOccupancy - 1).clamp(0, bus.capacity);
 
-    print('DEBUG: Updating bus location...');
+    debugPrint('DEBUG: Updating bus location...');
     final busUpdateResult = await _firestoreService.updateBusLocation(
       busId: bus.busId,
       latitude: bus.latitude,
@@ -581,7 +581,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     if (!mounted) return;
 
     if (busUpdateResult == null) {
-      print('DEBUG: Bus update successful, tapping out from session');
+      debugPrint('DEBUG: Bus update successful, tapping out from session');
       final tapOutResult = await _firestoreService.tapOutFromBus(_deviceId!);
 
       // Treat "no active session" as success — the session may have been
@@ -590,10 +590,10 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
           tapOutResult == null || tapOutResult.contains('No active session');
 
       if (sessionCleared) {
-        print('DEBUG: Tap out successful');
+        debugPrint('DEBUG: Tap out successful');
         
         // Complete student trip
-        print('DEBUG: Completing student trip');
+        debugPrint('DEBUG: Completing student trip');
         await _firestoreService.completeStudentTrip(_deviceId!);
         
         setState(() {
@@ -607,15 +607,15 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
             bus.copyWith(currentOccupancy: newOccupancy),
           );
         }
-        print('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
+        debugPrint('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
         _showMessage('Tapped out successfully!');
       } else {
-        print('DEBUG: Tap out session failed: $tapOutResult');
+        debugPrint('DEBUG: Tap out session failed: $tapOutResult');
         setState(() => _isUpdating = false);
         _showMessage('Warning: $tapOutResult');
       }
     } else {
-      print('DEBUG: Bus update failed: $busUpdateResult');
+      debugPrint('DEBUG: Bus update failed: $busUpdateResult');
       setState(() => _isUpdating = false);
       _showMessage('Error: $busUpdateResult');
     }

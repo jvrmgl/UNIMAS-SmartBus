@@ -13,6 +13,7 @@ class AnnouncementProvider extends ChangeNotifier {
   String? _error;
 
   final Map<String, Set<String>> _clearedByRole = {};
+  bool _clearedLoaded = false;
 
   Set<String> _roleSet(String role) =>
       _clearedByRole.putIfAbsent(role, () => {});
@@ -28,13 +29,15 @@ class AnnouncementProvider extends ChangeNotifier {
 
   /// Loads persisted cleared-ID sets for all roles from Hive.
   Future<void> _loadCleared() async {
+    if (_clearedLoaded) return;
     final box = await Hive.openBox(_boxName);
     for (final role in ['student', 'admin', 'driver']) {
       final stored = box.get(role);
-      if (stored != null) {
-        _clearedByRole[role] = Set<String>.from(stored as List);
+      if (stored is List) {
+        _clearedByRole[role] = stored.map((e) => e.toString()).toSet();
       }
     }
+    _clearedLoaded = true;
   }
 
   /// Persists the cleared-ID set for [role] to Hive.
@@ -43,9 +46,9 @@ class AnnouncementProvider extends ChangeNotifier {
     await box.put(role, _roleSet(role).toList());
   }
 
-  void clearAnnouncementsFor(String role) {
+  Future<void> clearAnnouncementsFor(String role) async {
     _roleSet(role).addAll(_announcements.map((a) => a.announcementId));
-    _saveCleared(role); // persist across sessions
+    await _saveCleared(role); // persist across sessions
     notifyListeners();
   }
 

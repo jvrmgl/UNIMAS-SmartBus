@@ -1,8 +1,30 @@
 const admin = require('firebase-admin');
-const functions = require('firebase-functions');
+const functions = require('firebase-functions/v1');
 
 if (!admin.apps.length) {
   admin.initializeApp();
+}
+
+// ── Per-instance in-memory rate limiter ───────────────────────────────────────
+// Prevents abuse of callable functions. Resets per window per UID.
+// Per-instance only — sufficient for a campus-scale app.
+const _rateLimitMap = new Map();
+function enforceRateLimit(uid, { maxCalls = 10, windowMs = 60_000 } = {}) {
+  const now = Date.now();
+  const entry = _rateLimitMap.get(uid) ?? { count: 0, windowStart: now };
+  if (now - entry.windowStart > windowMs) {
+    entry.count = 1;
+    entry.windowStart = now;
+  } else {
+    entry.count += 1;
+  }
+  _rateLimitMap.set(uid, entry);
+  if (entry.count > maxCalls) {
+    throw new functions.https.HttpsError(
+      'resource-exhausted',
+      'Too many requests. Please try again later.'
+    );
+  }
 }
 
 exports.deleteAuthUserByUid = functions
@@ -14,6 +36,8 @@ exports.deleteAuthUserByUid = functions
         'Authentication required.'
       );
     }
+    // Rate limit: max 5 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 5, windowMs: 60_000 });
 
     const requesterDoc = await admin
       .firestore()
@@ -100,6 +124,8 @@ exports.resendAnnouncementNotification = functions
         'Authentication required.'
       );
     }
+    // Rate limit: max 10 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 10, windowMs: 60_000 });
 
     // Verify admin role
     const requesterDoc = await admin
