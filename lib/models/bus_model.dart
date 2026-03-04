@@ -53,6 +53,12 @@ class Bus {
     return getOccupancyPercentage() >= threshold;
   }
 
+  // A bus is considered location-ready once it has moved away from the
+  // default placeholder coordinate used at creation time.
+  bool get hasReportedLocation {
+    return latitude != 0.0 || longitude != 0.0;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'busId': busId,

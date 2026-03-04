@@ -4,6 +4,7 @@ import '../../models/user_model.dart';
 import '../../services/firestore_service.dart';
 import '../../services/auth_service.dart';
 import '../../providers/bus_provider.dart';
+import '../../utils/app_navigator.dart';
 
 class DriversManagementScreen extends StatefulWidget {
   const DriversManagementScreen({super.key});
@@ -18,6 +19,21 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
   final AuthService _authService = AuthService();
   List<User> _drivers = [];
   bool _isLoading = true;
+
+  void _showSafeSnackBar(
+    BuildContext scaffoldContext,
+    String message, {
+    Color? backgroundColor,
+  }) {
+    final messenger = scaffoldMessengerKey.currentState;
+    if (messenger == null) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -36,6 +52,14 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     setState(() {
       _drivers = drivers;
       _isLoading = false;
+    });
+  }
+
+  Future<void> _refreshDriversSilently() async {
+    final drivers = await _firestoreService.getUsersByRole(UserRole.driver);
+    if (!mounted) return;
+    setState(() {
+      _drivers = drivers;
     });
   }
 
@@ -305,19 +329,17 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                 
                 if (!mounted) return;
                 if (error == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Driver updated successfully'),
-                      backgroundColor: Colors.green,
-                    ),
+                  _showSafeSnackBar(
+                    context,
+                    'Driver updated successfully',
+                    backgroundColor: Colors.green,
                   );
                   _loadDrivers();
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(error),
-                      backgroundColor: Colors.red,
-                    ),
+                  _showSafeSnackBar(
+                    context,
+                    error,
+                    backgroundColor: Colors.red,
                   );
                 }
               }
@@ -335,10 +357,12 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     final nameController = TextEditingController();
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
+    bool isCreating = false;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
         title: const Text('Add New Driver'),
         content: Form(
           key: formKey,
@@ -389,13 +413,16 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: isCreating ? null : () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: isCreating
+                ? null
+                : () async {
               if (formKey.currentState!.validate()) {
-                final error = await _authService.createUserAsAdmin(
+                setDialogState(() => isCreating = true);
+                final result = await _authService.createUserAsAdminWithResult(
                   email: emailController.text.trim(),
                   password: passwordController.text.trim(),
                   fullName: nameController.text.trim(),
@@ -404,23 +431,43 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                 );
 
                 if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-                if (!mounted) return;
-                ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-                  SnackBar(
-                    content:
-                        Text(error ?? 'Driver account created successfully'),
-                    backgroundColor: error == null ? Colors.green : Colors.red,
-                  ),
-                );
-                if (error == null) {
-                  _loadDrivers();
+                if (result.isSuccess && result.user != null) {
+                  if (mounted) {
+                    setState(() {
+                      _drivers = [
+                        result.user!,
+                        ..._drivers.where((d) => d.uid != result.user!.uid),
+                      ];
+                    });
+                  }
+                  Navigator.pop(dialogContext);
+                  if (!mounted) return;
+                  _showSafeSnackBar(
+                    scaffoldContext,
+                    'Driver account created successfully',
+                    backgroundColor: Colors.green,
+                  );
+                  _refreshDriversSilently();
+                } else {
+                  setDialogState(() => isCreating = false);
+                  _showSafeSnackBar(
+                    scaffoldContext,
+                    result.error ?? 'Failed to create driver account',
+                    backgroundColor: Colors.red,
+                  );
                 }
               }
             },
-            child: const Text('Create'),
+            child: isCreating
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Create'),
           ),
         ],
+      ),
       ),
     );
   }
@@ -429,8 +476,10 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     final scaffoldContext = context;
     final buses = context.read<BusProvider>().buses;
     final availableBuses = buses.where((bus) => bus.driverId == null).toList();
+    final busProvider = context.read<BusProvider>();
 
     String? selectedBusId = availableBuses.isNotEmpty ? availableBuses.first.busId : null;
+    bool isAssigning = false;
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -466,13 +515,14 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: isAssigning ? null : () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: availableBuses.isEmpty || selectedBusId == null
+              onPressed: isAssigning || availableBuses.isEmpty || selectedBusId == null
                   ? null
                   : () async {
+                      setDialogState(() => isAssigning = true);
                       final selectedBus = availableBuses.firstWhere(
                         (bus) => bus.busId == selectedBusId,
                       );
@@ -486,20 +536,32 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                       Navigator.pop(dialogContext);
                       if (!mounted) return;
 
-                      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-                        SnackBar(
-                          content:
-                              Text(error ?? 'Bus assigned to ${driver.fullName}'),
-                          backgroundColor:
-                              error == null ? Colors.green : Colors.red,
-                        ),
+                      _showSafeSnackBar(
+                        scaffoldContext,
+                        error ?? 'Bus assigned to ${driver.fullName}',
+                        backgroundColor: error == null ? Colors.green : Colors.red,
                       );
                       if (error == null) {
-                        context.read<BusProvider>().fetchBuses();
-                        _loadDrivers();
+                        busProvider.updateBusInList(
+                          selectedBus.copyWith(
+                            driverId: driver.uid,
+                            driverName: driver.fullName,
+                            lastUpdated: DateTime.now(),
+                          ),
+                        );
+                        _refreshDriversSilently();
+                        busProvider.fetchBuses();
+                      } else {
+                        setDialogState(() => isAssigning = false);
                       }
                     },
-              child: const Text('Assign'),
+              child: isAssigning
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Assign'),
             ),
           ],
         ),
@@ -509,21 +571,25 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
 
   void _confirmUnassignBus(User driver) {
     final scaffoldContext = context;
-    final buses = context.read<BusProvider>().buses;
+    final busProvider = context.read<BusProvider>();
+    final buses = busProvider.buses;
     final assignedBus = buses.where((b) => b.driverId == driver.uid).firstOrNull;
 
     if (assignedBus == null) {
-      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-        const SnackBar(content: Text('No bus assigned to this driver')),
+      _showSafeSnackBar(
+        scaffoldContext,
+        'No bus assigned to this driver',
       );
       return;
     }
 
     final isOnActiveShift = assignedBus.isActive;
+    bool isUnassigning = false;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
         title: const Text('Unassign Bus'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -560,13 +626,15 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: isUnassigning ? null : () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: isUnassigning
+                ? null
+                : () async {
+              setDialogState(() => isUnassigning = true);
               final navigator = Navigator.of(dialogContext);
-              final messenger = ScaffoldMessenger.of(scaffoldContext);
 
               final error = await _firestoreService
                   .removeDriverFromBus(assignedBus.busId);
@@ -575,24 +643,41 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
               navigator.pop();
               if (!mounted) return;
 
-              messenger.showSnackBar(
-                SnackBar(
-                  content: Text(error ??
-                      'Bus ${assignedBus.busNumber} unassigned from ${driver.fullName}'),
-                  backgroundColor: error == null ? Colors.green : Colors.red,
-                ),
+              _showSafeSnackBar(
+                scaffoldContext,
+                error ??
+                    'Bus ${assignedBus.busNumber} unassigned from ${driver.fullName}',
+                backgroundColor: error == null ? Colors.green : Colors.red,
               );
               if (error == null) {
-                context.read<BusProvider>().fetchBuses();
-                _loadDrivers();
+                busProvider.updateBusInList(
+                  assignedBus.copyWith(
+                    driverId: null,
+                    driverName: null,
+                    isActive: false,
+                    currentOccupancy: 0,
+                    lastUpdated: DateTime.now(),
+                  ),
+                );
+                _refreshDriversSilently();
+                busProvider.fetchBuses();
+              } else {
+                setDialogState(() => isUnassigning = false);
               }
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange.shade700,
                 foregroundColor: Colors.white),
-            child: const Text('Unassign'),
+            child: isUnassigning
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Unassign'),
           ),
         ],
+      ),
       ),
     );
   }
@@ -620,11 +705,10 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
               if (!dialogContext.mounted) return;
               Navigator.pop(dialogContext);
               if (!mounted) return;
-              ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-                SnackBar(
-                  content: Text(error ?? 'Driver deleted successfully'),
-                  backgroundColor: error == null ? Colors.green : Colors.red,
-                ),
+              _showSafeSnackBar(
+                scaffoldContext,
+                error ?? 'Driver deleted successfully',
+                backgroundColor: error == null ? Colors.green : Colors.red,
               );
               if (error == null) {
                 context.read<BusProvider>().fetchBuses();

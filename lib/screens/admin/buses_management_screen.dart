@@ -282,16 +282,28 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                           ),
                           const SizedBox(width: 8),
                           OutlinedButton(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    BusLocationMapScreen(bus: bus),
-                              ),
-                            ),
+                            onPressed: () {
+                              if (!bus.hasReportedLocation) {
+                                _showNoLocationDialog(bus);
+                                return;
+                              }
+
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => BusLocationMapScreen(bus: bus),
+                                ),
+                              );
+                            },
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Colors.indigo),
-                              foregroundColor: Colors.indigo,
+                              side: BorderSide(
+                                color: bus.hasReportedLocation
+                                    ? Colors.indigo
+                                    : Colors.grey,
+                              ),
+                              foregroundColor: bus.hasReportedLocation
+                                  ? Colors.indigo
+                                  : Colors.grey,
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
                               minimumSize: const Size(0, 40),
@@ -747,6 +759,25 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showNoLocationDialog(Bus bus) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('No location set yet'),
+        content: Text(
+          'Bus ${bus.busNumber} has not shared any live location yet. '
+          'Assign a driver and let them start tracking first.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('OK'),
           ),
         ],
       ),

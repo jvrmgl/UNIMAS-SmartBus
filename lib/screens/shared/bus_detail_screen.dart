@@ -510,12 +510,12 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     }
 
     debugPrint('DEBUG: Tap in successful, updating bus occupancy');
-    // Update bus occupancy
-    final busUpdateResult = await _firestoreService.updateBusLocation(
+    final newOccupancy = bus.currentOccupancy + 1;
+    // Passengers only need occupancy updates here. Using occupancy-only write
+    // keeps this compatible with strict Firestore rules for guest users.
+    final busUpdateResult = await _firestoreService.updateBusOccupancy(
       busId: bus.busId,
-      latitude: bus.latitude,
-      longitude: bus.longitude,
-      currentOccupancy: bus.currentOccupancy + 1,
+      currentOccupancy: newOccupancy,
     );
 
     if (!mounted) return;
@@ -542,7 +542,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       // dashboard refreshes instantly without waiting for the stream.
       if (mounted) {
         context.read<BusProvider>().updateBusInList(
-          bus.copyWith(currentOccupancy: bus.currentOccupancy + 1),
+            bus.copyWith(currentOccupancy: newOccupancy),
         );
       }
       debugPrint('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
@@ -551,6 +551,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       debugPrint('DEBUG: Bus update failed: $busUpdateResult');
       // Rollback the tap in
       await _firestoreService.tapOutFromBus(_deviceId!);
+      if (!mounted) return;
       setState(() => _isUpdating = false);
       _showMessage('Error: $busUpdateResult');
     }
@@ -570,11 +571,9 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     // Clamp to 0 — occupancy may already be 0 if driver ended shift early
     final newOccupancy = (bus.currentOccupancy - 1).clamp(0, bus.capacity);
 
-    debugPrint('DEBUG: Updating bus location...');
-    final busUpdateResult = await _firestoreService.updateBusLocation(
+    debugPrint('DEBUG: Updating bus occupancy...');
+    final busUpdateResult = await _firestoreService.updateBusOccupancy(
       busId: bus.busId,
-      latitude: bus.latitude,
-      longitude: bus.longitude,
       currentOccupancy: newOccupancy,
     );
 
@@ -622,7 +621,10 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger.showSnackBar(
       SnackBar(content: Text(message)),
     );
   }

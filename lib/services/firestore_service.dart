@@ -918,6 +918,31 @@ class FirestoreService {
     }
   }
 
+  // Close all active student trips for a bus (called when driver ends shift)
+  Future<void> completeAllBusStudentTrips(String busId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('student_trips')
+          .where('busId', isEqualTo: busId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.update(doc.reference, {
+          'offBoardedAt': FieldValue.serverTimestamp(),
+          'status': 'completed',
+          'closedByShiftEnd': true,
+        });
+      }
+      if (snapshot.docs.isNotEmpty) {
+        await batch.commit();
+      }
+    } catch (e) {
+      // ignore — best-effort cleanup
+    }
+  }
+
   // Complete a trip when student taps out
   Future<String?> completeStudentTrip(String deviceId) async {
     try {

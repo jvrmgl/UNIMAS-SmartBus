@@ -86,6 +86,7 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: AppConstants.appName,
             navigatorKey: navigatorKey,
+            scaffoldMessengerKey: scaffoldMessengerKey,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.themeMode,

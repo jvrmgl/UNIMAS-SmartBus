@@ -70,13 +70,29 @@ class DriverShiftProvider extends ChangeNotifier {
     }
   }
 
-  /// Initialize driver with their UID
+  /// Initialize driver with their UID.
+  /// If a different driver was previously using this provider instance
+  /// (same device, different account), all prior state is cleared first
+  /// so Driver B never inherits Driver A's shift or bus.
   void setDriverUid(String uid) {
+    if (_driverUid != null && _driverUid != uid) {
+      // New driver on same device — wipe state from previous session.
+      _assignedBusSubscription?.cancel();
+      _assignedBusSubscription = null;
+      if (_trackingService.isTracking) {
+        _trackingService.stopTracking();
+      }
+      _assignedBus = null;
+      _isOnShift = false;
+      _error = null;
+    }
     _driverUid = uid;
     _checkAssignedBus();
   }
 
-  /// Check if admin has already assigned a bus to this driver
+  /// Check if admin has already assigned a bus to this driver.
+  /// Explicitly clears [_assignedBus] when no bus is found so that a new
+  /// driver never inherits a stale assignment from a previous session.
   Future<void> _checkAssignedBus() async {
     if (_driverUid == null) return;
 
@@ -87,8 +103,11 @@ class DriverShiftProvider extends ChangeNotifier {
       if (assigned != null) {
         _assignedBus = assigned;
         _subscribeToBus(assigned.busId); // live updates
-        notifyListeners();
+      } else {
+        // No bus assigned to this driver — clear any stale assignment.
+        _assignedBus = null;
       }
+      notifyListeners();
     } catch (e) {
       _error = 'Failed to check assigned bus: $e';
       notifyListeners();
@@ -262,6 +281,7 @@ class DriverShiftProvider extends ChangeNotifier {
             'lastUpdated': DateTime.now().toIso8601String(),
           }),
           _firestoreService.clearBusActiveSessions(_assignedBus!.busId),
+          _firestoreService.completeAllBusStudentTrips(_assignedBus!.busId),
         ]);
       } catch (e) {
         deactivationError = 'Error updating bus status: $e';
@@ -334,6 +354,23 @@ class DriverShiftProvider extends ChangeNotifier {
   }
 
   void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  /// Fully resets shift state without making any Firestore calls.
+  /// Call this when a user signs out so the next driver starts with a
+  /// clean slate. For a graceful end (Firestore bus deactivation) call
+  /// [endShift] first, then [clearShiftState].
+  void clearShiftState() {
+    _assignedBusSubscription?.cancel();
+    _assignedBusSubscription = null;
+    if (_trackingService.isTracking) {
+      _trackingService.stopTracking();
+    }
+    _assignedBus = null;
+    _isOnShift = false;
+    _driverUid = null;
     _error = null;
     notifyListeners();
   }

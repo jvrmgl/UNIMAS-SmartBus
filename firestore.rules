@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == 'admin';
+    }
+
+    function isAdminOrDriver() {
+      return isSignedIn() && (userRole() == 'admin' || userRole() == 'driver');
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+    }
+
+    match /buses/{busId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isSignedIn() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentOccupancy']) &&
+        request.resource.data.currentOccupancy is int &&
+        request.resource.data.currentOccupancy >= 0
+      );
+    }
+
+    match /routes/{routeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /bus_stops/{stopId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /schedules/{scheduleId} {
+      allow read: if true;
+      allow write: if isAdminOrDriver();
+    }
+
+    match /schedule_images/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /trips/{tripId} {
+      allow read: if isSignedIn();
+      allow write: if isAdminOrDriver();
+    }
+
+    match /device_tokens/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /notification_templates/{templateId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /waiting_students/{waitId} {
+      allow read: if isSignedIn();
+      allow create: if true;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status',
+        'departedAt',
+        'notifiedAt'
+      ]);
+      allow delete: if isAdmin();
+    }
+
+    match /device_bus_sessions/{sessionId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if request.resource.data.deviceId == resource.data.deviceId;
+      allow delete: if false;
+    }
+
+    match /student_trips/{tripId} {
+      allow read, write: if true;
+    }
+
+    match /reports/{reportId} {
+      allow read, create: if true;
+      allow update, delete: if isAdminOrDriver();
+
+      match /messages/{messageId} {
+        allow read, create: if true;
+        allow update, delete: if isAdminOrDriver();
+      }
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

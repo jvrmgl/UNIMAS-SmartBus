@@ -6,6 +6,15 @@ import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../firebase_options.dart';
 
+class AdminCreateUserResult {
+  final String? error;
+  final User? user;
+
+  const AdminCreateUserResult({this.error, this.user});
+
+  bool get isSuccess => error == null && user != null;
+}
+
 class AuthService {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -167,6 +176,25 @@ class AuthService {
     required String phoneNumber,
     required UserRole role,
   }) async {
+    final result = await createUserAsAdminWithResult(
+      email: email,
+      password: password,
+      fullName: fullName,
+      phoneNumber: phoneNumber,
+      role: role,
+    );
+    return result.error;
+  }
+
+  // Admin: create a user account and return the created user profile so UI can
+  // update immediately without waiting for a full list reload.
+  Future<AdminCreateUserResult> createUserAsAdminWithResult({
+    required String email,
+    required String password,
+    required String fullName,
+    required String phoneNumber,
+    required UserRole role,
+  }) async {
     FirebaseApp? secondaryApp;
     firebase_auth.FirebaseAuth? secondaryAuth;
 
@@ -185,7 +213,9 @@ class AuthService {
 
       final uid = credential.user?.uid;
       if (uid == null) {
-        return 'Failed to create user account';
+        return const AdminCreateUserResult(
+          error: 'Failed to create user account',
+        );
       }
 
       final userModel = User(
@@ -198,11 +228,13 @@ class AuthService {
       );
 
       await _firestore.collection('users').doc(uid).set(userModel.toMap());
-      return null;
+      return AdminCreateUserResult(user: userModel);
     } on firebase_auth.FirebaseAuthException catch (e) {
-      return e.message ?? 'An error occurred while creating the account';
+      return AdminCreateUserResult(
+        error: e.message ?? 'An error occurred while creating the account',
+      );
     } catch (e) {
-      return 'Error: ${e.toString()}';
+      return AdminCreateUserResult(error: 'Error: ${e.toString()}');
     } finally {
       try {
         await secondaryAuth?.signOut();

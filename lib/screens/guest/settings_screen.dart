@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../providers/notification_prefs_provider.dart';
+import '../../providers/driver_shift_provider.dart';
 import '../../services/smart_notification_service.dart';
 import '../../models/user_model.dart';
 import '../../providers/theme_provider.dart';
@@ -34,7 +35,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AuthProvider>().addListener(_onAuthProviderChanged);
       context.read<AnnouncementProvider>().fetchAnnouncements();
-      context.read<NotificationPrefsProvider>().load();
+      final uid = context.read<AuthProvider>().currentUser?.uid;
+      if (uid != null) {
+        context.read<NotificationPrefsProvider>().load(uid);
+      }
     });
   }
 
@@ -92,9 +96,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _handleLogout() async {
     final authProvider = context.read<AuthProvider>();
-    // Capture navigator before the async gap to avoid using a
-    // deactivated context after signOut completes.
+    final shiftProvider = context.read<DriverShiftProvider>();
+    final notifPrefs = context.read<NotificationPrefsProvider>();
+    // Capture navigator before async gaps to avoid deactivated-context errors.
     final nav = Navigator.of(context);
+
+    // If a driver is on an active shift, end it cleanly so the bus goes
+    // offline in Firestore before we lose auth credentials to do so.
+    if (authProvider.currentUser?.role == UserRole.driver &&
+        shiftProvider.isOnShift) {
+      await shiftProvider.endShift();
+    }
+    // Wipe local shift state regardless of role so the next driver login
+    // always starts with a clean slate on this device.
+    shiftProvider.clearShiftState();
+    // Reset notification prefs to defaults so the next user's preferences
+    // are not influenced by this user's settings.
+    notifPrefs.resetToDefaults();
+
     await authProvider.signOut();
     _emailController.clear();
     _passwordController.clear();
