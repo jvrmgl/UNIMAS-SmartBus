@@ -14,6 +14,7 @@ class GuestHomeScreen extends StatefulWidget {
 
 class _GuestHomeScreenState extends State<GuestHomeScreen> {
   int _currentIndex = 0;
+  DashboardNavProvider? _dashboardNavProviderRef;
 
   final List<Widget> _screens = const [
     GuestMapScreen(),
@@ -25,18 +26,21 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DashboardNavProvider>().addListener(_onNavChange);
+      if (!mounted) return;
+      _dashboardNavProviderRef = context.read<DashboardNavProvider>();
+      _dashboardNavProviderRef!.addListener(_onNavChange);
     });
   }
 
   @override
   void dispose() {
-    context.read<DashboardNavProvider>().removeListener(_onNavChange);
+    _dashboardNavProviderRef?.removeListener(_onNavChange);
     super.dispose();
   }
 
   void _onNavChange() {
-    final nav = context.read<DashboardNavProvider>();
+    if (!mounted) return;
+    final nav = _dashboardNavProviderRef ?? context.read<DashboardNavProvider>();
     if (nav.shouldSwitchToHome && mounted) {
       setState(() => _currentIndex = 1);
       nav.consumeHomeSwitch();

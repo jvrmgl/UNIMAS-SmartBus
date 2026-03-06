@@ -31,16 +31,16 @@ class DriverShiftProvider extends ChangeNotifier {
         _firestoreService.getBusStream(busId).listen((bus) {
       if (bus == null) return;
 
-      final wasActive = _assignedBus?.isActive ?? false;
       _assignedBus = bus;
       notifyListeners();
 
-      // Admin activated the bus → auto-start tracking
-      if (bus.isActive && !wasActive && !_isOnShift) {
+      // Keep local shift state aligned with Firestore truth.
+      // This also handles app relaunch where bus is already active.
+      if (bus.isActive && !_isOnShift) {
         _autoStartShift();
       }
       // Admin deactivated the bus → auto-end tracking
-      if (!bus.isActive && wasActive && _isOnShift) {
+      if (!bus.isActive && _isOnShift) {
         endShift();
       }
     });
@@ -103,9 +103,19 @@ class DriverShiftProvider extends ChangeNotifier {
       if (assigned != null) {
         _assignedBus = assigned;
         _subscribeToBus(assigned.busId); // live updates
+
+        // App may have relaunched while bus remained active in Firestore.
+        // Resume tracking so local state cannot drift to "ended" incorrectly.
+        if (assigned.isActive && !_isOnShift) {
+          _autoStartShift();
+        }
       } else {
         // No bus assigned to this driver — clear any stale assignment.
         _assignedBus = null;
+        if (_trackingService.isTracking) {
+          _trackingService.stopTracking();
+        }
+        _isOnShift = false;
       }
       notifyListeners();
     } catch (e) {
@@ -278,6 +288,7 @@ class DriverShiftProvider extends ChangeNotifier {
               .update({
             'isActive': false,
             'currentOccupancy': 0,
+            'activatedByAdminName': FieldValue.delete(),
             'lastUpdated': DateTime.now().toIso8601String(),
           }),
           _firestoreService.clearBusActiveSessions(_assignedBus!.busId),

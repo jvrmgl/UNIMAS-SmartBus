@@ -135,10 +135,13 @@ class FirestoreService {
         'isActive': isActive,
         // Reset occupancy when deactivating so stale counts are cleared
         if (!isActive) 'currentOccupancy': 0,
-        // Store activating admin name so the CF can include it in the
-        // driver shift-started notification; clear it on deactivation.
-        if (isActive && adminName != null) 'activatedByAdminName': adminName,
-        if (!isActive) 'activatedByAdminName': null,
+        // When admin activates: store their name so the CF can notify the driver.
+        // When driver self-starts OR deactivates: DELETE the field entirely
+        // (not just null) so no stale admin name can ever trigger a false push.
+        if (isActive && adminName != null)
+          'activatedByAdminName': adminName
+        else
+          'activatedByAdminName': FieldValue.delete(),
         'lastUpdated': DateTime.now().toIso8601String(),
       });
       return null;
@@ -176,6 +179,7 @@ class FirestoreService {
         'driverName': null,
         'isActive': false,
         'currentOccupancy': 0,
+        'activatedByAdminName': FieldValue.delete(),
         'lastUpdated': DateTime.now().toIso8601String(),
       });
       return null;
@@ -332,6 +336,15 @@ class FirestoreService {
     } catch (e) {
       return [];
     }
+  }
+
+  // Stream all bus stops in real time
+  Stream<List<BusStop>> getBusStopsStream() {
+    return _firestore.collection('bus_stops').snapshots().map(
+          (snapshot) => snapshot.docs
+              .map((doc) => BusStop.fromMap(doc.data()))
+              .toList(),
+        );
   }
 
   // Get single bus stop

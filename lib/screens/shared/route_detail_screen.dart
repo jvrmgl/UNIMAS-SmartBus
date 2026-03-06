@@ -155,12 +155,15 @@ class RouteDetailScreen extends StatelessWidget {
                                     'Bus ${currentBus.busNumber} is on this route',
                                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                       fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     'Occupancy: ${currentBus.currentOccupancy}/${currentBus.capacity}',
-                                    style: Theme.of(context).textTheme.bodyMedium,
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Colors.black87,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -328,6 +331,7 @@ class RouteDetailScreen extends StatelessWidget {
                               stop.stopName,
                               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                color: isCurrent ? Colors.black87 : null,
                               ),
                             ),
                           ),
@@ -357,7 +361,12 @@ class RouteDetailScreen extends StatelessWidget {
                         Text(
                           stop.description,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey.shade600,
+                            // Use a fixed dark-grey on the light-green current card,
+                            // and let the theme handle colour on regular cards so it
+                            // stays readable in both light and dark mode.
+                            color: isCurrent
+                                ? Colors.grey.shade600
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],

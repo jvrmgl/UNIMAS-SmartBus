@@ -840,7 +840,7 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(sheetCtx);
-                      _showAddBusStopDialog(scaffoldContext);
+                      _showAddBusStopMapDialog(scaffoldContext);
                     },
                     icon: const Icon(Icons.add_location_alt_outlined, size: 20),
                     label: const Text('Add Stop'),
@@ -1016,225 +1016,239 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
     );
   }
 
-  void _showAddBusStopDialog(BuildContext scaffoldContext) {
-    final formKey = GlobalKey<FormState>();
-    final stopNameController = TextEditingController();
-    final stopCodeController = TextEditingController();
-    final latitudeController = TextEditingController();
-    final longitudeController = TextEditingController();
-    final descriptionController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Add Bus Stop'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: stopNameController,
-                  decoration: const InputDecoration(labelText: 'Stop Name'),
-                  validator: (value) =>
-                      value?.trim().isEmpty ?? true ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: stopCodeController,
-                  decoration: const InputDecoration(labelText: 'Stop Code'),
-                  validator: (value) =>
-                      value?.trim().isEmpty ?? true ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: latitudeController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Latitude (optional)'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: longitudeController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration:
-                      const InputDecoration(labelText: 'Longitude (optional)'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(labelText: 'Description'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-
-              final stopId = 'stop${DateTime.now().millisecondsSinceEpoch}';
-              final stop = BusStop(
-                stopId: stopId,
-                stopName: stopNameController.text.trim(),
-                stopCode: stopCodeController.text.trim(),
-                latitude: double.tryParse(latitudeController.text.trim()) ?? 0,
-                longitude: double.tryParse(longitudeController.text.trim()) ?? 0,
-                description: descriptionController.text.trim(),
-                createdAt: DateTime.now(),
-              );
-
-              final error = await _firestoreService.addBusStop(stop);
-              if (!dialogContext.mounted) return;
-              Navigator.pop(dialogContext);
-              if (!mounted) return;
-
-              ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-                SnackBar(
-                  content: Text(error == null
-                      ? 'Bus stop added successfully'
-                      : 'Error: $error'),
-                  backgroundColor: error == null ? Colors.green : Colors.red,
-                ),
-              );
-              if (error == null) {
-                context.read<RouteProvider>().fetchBusStops();
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showAddBusStopMapDialog(BuildContext scaffoldContext) {
     final formKey = GlobalKey<FormState>();
     final stopNameController = TextEditingController();
     final stopCodeController = TextEditingController();
     final descriptionController = TextEditingController();
     LatLng? selectedLatLng;
+    bool isMapExpanded = false;
 
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Add Bus Stop by Pin'),
-          content: SingleChildScrollView(
+        builder: (dialogContext, setDialogState) {
+          final expandToggle = Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              elevation: 2,
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(4),
+                onTap: () =>
+                    setDialogState(() => isMapExpanded = !isMapExpanded),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    isMapExpanded ? Icons.fullscreen_exit : Icons.fullscreen,
+                    size: 22,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          final coordChip = Positioned(
+            bottom: 8,
+            left: 8,
+            right: 8,
+            child: Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  selectedLatLng == null
+                      ? 'Tap the map to drop a bus stop pin'
+                      : '${selectedLatLng!.latitude.toStringAsFixed(6)}, ${selectedLatLng!.longitude.toStringAsFixed(6)}',
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+
+          final googleMap = GoogleMap(
+            initialCameraPosition: const CameraPosition(
+              target: LatLng(1.4651, 110.4277),
+              zoom: AppConstants.defaultMapZoom,
+            ),
+            onTap: (latLng) => setDialogState(() => selectedLatLng = latLng),
+            markers: {
+              if (selectedLatLng != null)
+                Marker(
+                  markerId: const MarkerId('new_bus_stop_pin'),
+                  position: selectedLatLng!,
+                ),
+            },
+            myLocationEnabled: true,
+            myLocationButtonEnabled: true,
+          );
+
+          final titleBar = Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Add Bus Stop by Pin',
+                    style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(dialogContext),
+                ),
+              ],
+            ),
+          );
+
+          final formSection = Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Form(
               key: formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                    height: 220,
-                    width: double.maxFinite,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: GoogleMap(
-                        initialCameraPosition: const CameraPosition(
-                          target: LatLng(1.4651, 110.4277),
-                          zoom: AppConstants.defaultMapZoom,
-                        ),
-                        onTap: (latLng) {
-                          setDialogState(() => selectedLatLng = latLng);
-                        },
-                        markers: {
-                          if (selectedLatLng != null)
-                            Marker(
-                              markerId: const MarkerId('new_bus_stop_pin'),
-                              position: selectedLatLng!,
-                            ),
-                        },
-                        myLocationEnabled: true,
-                        myLocationButtonEnabled: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    selectedLatLng == null
-                        ? 'Tap the map to drop a bus stop pin'
-                        : 'Selected: ${selectedLatLng!.latitude.toStringAsFixed(6)}, ${selectedLatLng!.longitude.toStringAsFixed(6)}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
                   TextFormField(
                     controller: stopNameController,
-                    decoration: const InputDecoration(labelText: 'Stop Name'),
-                    validator: (value) =>
-                        value?.trim().isEmpty ?? true ? 'Required' : null,
+                    decoration:
+                        const InputDecoration(labelText: 'Stop Name'),
+                    validator: (v) =>
+                        v?.trim().isEmpty ?? true ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: stopCodeController,
-                    decoration: const InputDecoration(labelText: 'Stop Code'),
-                    validator: (value) =>
-                        value?.trim().isEmpty ?? true ? 'Required' : null,
+                    decoration:
+                        const InputDecoration(labelText: 'Stop Code'),
+                    validator: (v) =>
+                        v?.trim().isEmpty ?? true ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: descriptionController,
-                    decoration: const InputDecoration(labelText: 'Description'),
+                    decoration: const InputDecoration(
+                        labelText: 'Description (optional)'),
                   ),
                 ],
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+          );
+
+          final actionRow = Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (!formKey.currentState!.validate()) return;
+                    if (selectedLatLng == null) {
+                      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                        const SnackBar(
+                          content:
+                              Text('Please drop a pin on the map first'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    final stopId =
+                        'stop${DateTime.now().millisecondsSinceEpoch}';
+                    final stop = BusStop(
+                      stopId: stopId,
+                      stopName: stopNameController.text.trim(),
+                      stopCode: stopCodeController.text.trim(),
+                      latitude: selectedLatLng!.latitude,
+                      longitude: selectedLatLng!.longitude,
+                      description: descriptionController.text.trim(),
+                      createdAt: DateTime.now(),
+                    );
+                    final error = await _firestoreService.addBusStop(stop);
+                    if (!dialogContext.mounted) return;
+                    Navigator.pop(dialogContext);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                      SnackBar(
+                        content: Text(error == null
+                            ? 'Bus stop added successfully'
+                            : 'Error: $error'),
+                        backgroundColor:
+                            error == null ? Colors.green : Colors.red,
+                      ),
+                    );
+                    if (error == null) {
+                      context.read<RouteProvider>().fetchBusStops();
+                    }
+                  },
+                  child: const Text('Add'),
+                ),
+              ],
             ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                if (selectedLatLng == null) {
-                  ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please drop a pin on the map first'),
-                      backgroundColor: Colors.red,
+          );
+
+          return Dialog(
+            insetPadding: isMapExpanded
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 24),
+            clipBehavior: Clip.antiAlias,
+            shape: isMapExpanded
+                ? const RoundedRectangleBorder()
+                : RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize:
+                    isMapExpanded ? MainAxisSize.max : MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  titleBar,
+                  if (isMapExpanded)
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          SizedBox.expand(child: googleMap),
+                          expandToggle,
+                          coordChip,
+                        ],
+                      ),
+                    )
+                  else
+                    Stack(
+                      children: [
+                        SizedBox(
+                          height: 260,
+                          width: double.infinity,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: googleMap,
+                          ),
+                        ),
+                        expandToggle,
+                        coordChip,
+                      ],
                     ),
-                  );
-                  return;
-                }
-
-                final stopId = 'stop${DateTime.now().millisecondsSinceEpoch}';
-                final stop = BusStop(
-                  stopId: stopId,
-                  stopName: stopNameController.text.trim(),
-                  stopCode: stopCodeController.text.trim(),
-                  latitude: selectedLatLng!.latitude,
-                  longitude: selectedLatLng!.longitude,
-                  description: descriptionController.text.trim(),
-                  createdAt: DateTime.now(),
-                );
-
-                final error = await _firestoreService.addBusStop(stop);
-                if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-                if (!mounted) return;
-
-                ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        error == null ? 'Bus stop added successfully' : 'Error: $error'),
-                    backgroundColor: error == null ? Colors.green : Colors.red,
-                  ),
-                );
-                if (error == null) {
-                  context.read<RouteProvider>().fetchBusStops();
-                }
-              },
-              child: const Text('Add'),
+                  formSection,
+                  actionRow,
+                ],
+              ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

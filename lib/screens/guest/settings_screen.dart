@@ -25,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _isAwaitingRoleRouting = false;
   bool _isLoginExpanded = false;
+  AuthProvider? _authProviderRef;
 
   @override
   void initState() {
@@ -33,9 +34,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _passwordController = TextEditingController();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AuthProvider>().addListener(_onAuthProviderChanged);
+      if (!mounted) return;
+      _authProviderRef = context.read<AuthProvider>();
+      _authProviderRef!.addListener(_onAuthProviderChanged);
       context.read<AnnouncementProvider>().fetchAnnouncements();
-      final uid = context.read<AuthProvider>().currentUser?.uid;
+      final uid = _authProviderRef!.currentUser?.uid;
       if (uid != null) {
         context.read<NotificationPrefsProvider>().load(uid);
       }
@@ -44,7 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    context.read<AuthProvider>().removeListener(_onAuthProviderChanged);
+    _authProviderRef?.removeListener(_onAuthProviderChanged);
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();

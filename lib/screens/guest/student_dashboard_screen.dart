@@ -41,7 +41,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     // Load initial data after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<BusProvider>().listenToBuses(); // real-time stream
+      _busProviderRef = context.read<BusProvider>();
+      _busProviderRef!.listenToBuses(); // real-time stream
       context.read<RouteProvider>().fetchRoutes();
       context.read<RouteProvider>().fetchBusStops();
       context.read<AnnouncementProvider>().fetchAnnouncements();
@@ -60,10 +61,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     }
   }
 
+  BusProvider? _busProviderRef;
+
   @override
   void dispose() {
     _dashboardNavProvider?.removeListener(_onNavChange);
-    context.read<BusProvider>().stopListeningToBuses();
+    _busProviderRef?.stopListeningToBuses();
     _tabController.dispose();
     super.dispose();
   }
@@ -735,6 +738,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
+
             // ── Stops Near You ────────────────────────────────────────
             if (top3Stops.isNotEmpty) ...[
               Padding(
@@ -744,7 +748,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                     Icon(Icons.near_me, size: 16, color: AppTheme.primaryColor),
                     const SizedBox(width: 6),
                     Text(
-                      'Stops Near You',
+                      'Stops Around You',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             color: AppTheme.primaryColor,
                             fontWeight: FontWeight.bold,
@@ -1050,6 +1054,68 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     showAppNotificationsSheet(context, 'student');
   }
 
+  void _openScheduleImageFullscreen(String imageUrl, String title) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog.fullscreen(
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: SafeArea(
+              child: Stack(
+                children: [
+                  Center(
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 4,
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.broken_image,
+                                size: 64,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Unable to load $title',
+                                style: const TextStyle(color: Colors.white70),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildNetworkScheduleImage(String imageUrl, String title) {
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1057,55 +1123,93 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
       ),
       child: SizedBox(
         width: double.infinity,
-        child: Image.network(
-        imageUrl,
-        fit: BoxFit.contain,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return ColoredBox(
-            color: Colors.grey.shade100,
-            child: Center(
-              child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                    : null,
+        child: InkWell(
+          onTap: () => _openScheduleImageFullscreen(imageUrl, title),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return ColoredBox(
+                      color: Colors.grey.shade100,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return ColoredBox(
+                      color: Colors.grey.shade100,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.broken_image,
+                            size: 64,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            title,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: Colors.grey.shade600,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Failed to load image',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: Colors.grey.shade500,
+                                ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          return ColoredBox(
-            color: Colors.grey.shade100,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.broken_image,
-                  size: 64,
-                  color: Colors.grey.shade400,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.grey.shade600,
+              const Positioned(
+                right: 10,
+                bottom: 10,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0x88000000),
+                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.zoom_in, color: Colors.white, size: 16),
+                        SizedBox(width: 4),
+                        Text(
+                          'Tap to zoom',
+                          style: TextStyle(color: Colors.white, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Failed to load image',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ), // closes Image.network
-    ), // closes SizedBox
-  ); // closes DecoratedBox
-}
-
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

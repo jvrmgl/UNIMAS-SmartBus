@@ -61,6 +61,8 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   @override
   void dispose() {
     _routeProvider.removeListener(_onRouteProviderUpdate);
+    context.read<BusProvider>().stopListeningToBuses();
+    context.read<RouteProvider>().stopListeningToBusStops();
     super.dispose();
   }
 
@@ -77,9 +79,9 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     final routeProvider = context.read<RouteProvider>();
     final announcementProvider = context.read<AnnouncementProvider>();
 
-    await busProvider.fetchBuses();
+    busProvider.listenToBuses();
+    routeProvider.listenToBusStops();
     await routeProvider.fetchRoutes();
-    await routeProvider.fetchBusStops();
     await announcementProvider.fetchAnnouncements();
   }
 

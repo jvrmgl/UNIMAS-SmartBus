@@ -463,6 +463,13 @@ exports.onBusActivated = functions
     if (before.isActive === after.isActive) return null;
     if (!after.isActive) return null;
 
+    // Only notify when the activation was explicitly performed by an admin.
+    // Driver self-starts should not receive "Admin has activated..." pushes.
+    const adminName = typeof after.activatedByAdminName === 'string'
+      ? after.activatedByAdminName.trim()
+      : '';
+    if (!adminName) return null;
+
     const driverId = after.driverId;
     if (!driverId) return null;
 
@@ -473,7 +480,6 @@ exports.onBusActivated = functions
       .get();
     if (!tokenDoc.exists || !tokenDoc.data().fcmToken) return null;
 
-    const adminName = after.activatedByAdminName || 'Admin';
     const busNumber = after.busNumber || 'your bus';
     const shiftStartedTmpl = await getTemplate(
       'shift_started',

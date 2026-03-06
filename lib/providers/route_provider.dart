@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/route_model.dart';
 import '../models/bus_stop_model.dart';
@@ -11,6 +13,7 @@ class RouteProvider extends ChangeNotifier {
   BusRoute? _selectedRoute;
   bool _isLoading = false;
   String? _error;
+  StreamSubscription<List<BusStop>>? _busStopsSubscription;
 
   List<BusRoute> get routes => _routes;
   List<BusStop> get busStops => _busStops;
@@ -57,6 +60,26 @@ class RouteProvider extends ChangeNotifier {
     }
   }
 
+  /// Subscribe to real-time bus stop updates.
+  void listenToBusStops() {
+    _busStopsSubscription?.cancel();
+    _busStopsSubscription = _firestoreService.getBusStopsStream().listen(
+      (stops) {
+        _busStops = stops;
+        notifyListeners();
+      },
+      onError: (e) {
+        _error = e.toString();
+        notifyListeners();
+      },
+    );
+  }
+
+  void stopListeningToBusStops() {
+    _busStopsSubscription?.cancel();
+    _busStopsSubscription = null;
+  }
+
   Future<List<BusStop>> getStopsForRoute(String routeId) async {
     try {
       final route = await _firestoreService.getRoute(routeId);
@@ -100,5 +123,11 @@ class RouteProvider extends ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _busStopsSubscription?.cancel();
+    super.dispose();
   }
 }
