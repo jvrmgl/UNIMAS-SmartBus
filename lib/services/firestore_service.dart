@@ -456,17 +456,23 @@ class FirestoreService {
     }
   }
 
-  // Get reports by student/device id
-  Stream<List<Report>> getReportsByStudentId(String studentId) {
+  // Get reports by device id
+  Stream<List<Report>> getReportsByDeviceId(String deviceId) {
     return _firestore
         .collection('reports')
-        .where('studentId', isEqualTo: studentId)
+        // Query legacy key for backward compatibility with existing data.
+        .where('studentId', isEqualTo: deviceId)
         .snapshots()
         .map((snapshot) {
       return snapshot.docs
           .map((doc) => Report.fromMap(doc.data()))
           .toList();
     });
+  }
+
+  // Backward-compatible wrapper.
+  Stream<List<Report>> getReportsByStudentId(String studentId) {
+    return getReportsByDeviceId(studentId);
   }
 
   // Stream all reports

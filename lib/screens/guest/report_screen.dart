@@ -118,7 +118,7 @@ class _ReportScreenState extends State<ReportScreen>
 
     final report = Report(
       reportId: reportId,
-      studentId: deviceId,
+      deviceId: deviceId,
       busId: busId,
       routeId: routeId,
       category: _category,
@@ -306,7 +306,7 @@ class _ReportScreenState extends State<ReportScreen>
         }
 
         return StreamBuilder<List<Report>>(
-          stream: _firestoreService.getReportsByStudentId(deviceId),
+          stream: _firestoreService.getReportsByDeviceId(deviceId),
           builder: (context, reportSnapshot) {
             if (reportSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());

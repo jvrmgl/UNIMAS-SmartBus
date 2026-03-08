@@ -4,7 +4,7 @@ enum ReportMessageSender { guest, admin }
 
 class Report {
   final String reportId;
-  final String? studentId; // Can be anonymous
+  final String? deviceId; // Can be anonymous
   final String? busId;
   final String? routeId;
   final ReportCategory category;
@@ -17,7 +17,7 @@ class Report {
 
   Report({
     required this.reportId,
-    this.studentId,
+    this.deviceId,
     this.busId,
     this.routeId,
     required this.category,
@@ -32,7 +32,9 @@ class Report {
   Map<String, dynamic> toMap() {
     return {
       'reportId': reportId,
-      'studentId': studentId,
+      // Keep legacy studentId for backward compatibility with existing queries.
+      'studentId': deviceId,
+      'deviceId': deviceId,
       'busId': busId,
       'routeId': routeId,
       'category': category.toString().split('.').last,
@@ -48,7 +50,8 @@ class Report {
   factory Report.fromMap(Map<String, dynamic> map) {
     return Report(
       reportId: map['reportId'] as String,
-      studentId: map['studentId'] as String?,
+      // Prefer deviceId, fallback to legacy studentId.
+      deviceId: (map['deviceId'] ?? map['studentId']) as String?,
       busId: map['busId'] as String?,
       routeId: map['routeId'] as String?,
       category: ReportCategory.values.firstWhere(
@@ -69,7 +72,7 @@ class Report {
 
   Report copyWith({
     String? reportId,
-    String? studentId,
+    String? deviceId,
     String? busId,
     String? routeId,
     ReportCategory? category,
@@ -82,7 +85,7 @@ class Report {
   }) {
     return Report(
       reportId: reportId ?? this.reportId,
-      studentId: studentId ?? this.studentId,
+      deviceId: deviceId ?? this.deviceId,
       busId: busId ?? this.busId,
       routeId: routeId ?? this.routeId,
       category: category ?? this.category,
