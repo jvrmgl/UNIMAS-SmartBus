@@ -1,1 +1,30 @@
-{"functions":{"source":"functions"},"firestore":{"rules":"firestore.rules"},"storage":{"rules":"storage.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"unimas-smartbus","appId":"1:742597414742:android:22980fcf99922d322fd0f7","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"unimas-smartbus","configurations":{"android":"1:742597414742:android:22980fcf99922d322fd0f7"}}}}}}
+{
+	"functions": {
+		"source": "functions"
+	},
+	"firestore": {
+		"rules": "firestore.rules"
+	},
+	"storage": {
+		"rules": "storage.rules"
+	},
+	"flutter": {
+		"platforms": {
+			"android": {
+				"default": {
+					"projectId": "unimas-smartbus",
+					"appId": "1:742597414742:android:22980fcf99922d322fd0f7",
+					"fileOutput": "android/app/google-services.json"
+				}
+			},
+			"dart": {
+				"lib/firebase_options.dart": {
+					"projectId": "unimas-smartbus",
+					"configurations": {
+						"android": "1:742597414742:android:22980fcf99922d322fd0f7"
+					}
+				}
+			}
+		}
+	}
+}

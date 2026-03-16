@@ -33,7 +33,8 @@ void main() async {
   
   // Initialize Hive for local storage
   await Hive.initFlutter();
-  
+
+  // FlutterFire options in this repo are currently configured for Android.
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
