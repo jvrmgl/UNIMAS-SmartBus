@@ -44,9 +44,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Firebase / API key files — do NOT commit these
-android/app/google-services.json
+# Firebase / API key files
+# google-services.json and firebase_options.dart are safe to commit (project IDs only, no secrets)
+# Real security comes from Firebase security rules
 ios/Runner/GoogleService-Info.plist
-lib/firebase_options.dart
 .env
 *.env
