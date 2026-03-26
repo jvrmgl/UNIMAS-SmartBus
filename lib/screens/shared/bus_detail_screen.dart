@@ -29,6 +29,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
   bool _isUpdating = false;
   bool _isLoading = true;
   String? _deviceId;
+  String? _activeBusId;
 
   @override
   void initState() {
@@ -78,6 +79,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       
       if (mounted) {
         setState(() {
+          _activeBusId = activeBusId;
           _isTappedIn = activeBusId == widget.bus.busId;
           _isLoading = false;
         });
@@ -221,12 +223,14 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                   child: Builder(
                     builder: (context) {
                       final isBusInactive = !bus.isActive;
+                      final hasActiveOtherSession =
+                          _activeBusId != null && _activeBusId != bus.busId;
                       debugPrint('DEBUG: Rendering buttons - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating, _isLoading: $_isLoading');
                       return Row(
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: _isTappedIn || _isUpdating || _isLoading || isBusInactive
+                              onPressed: _isTappedIn || _isUpdating || _isLoading || isBusInactive || hasActiveOtherSession
                                   ? null
                                   : () => _handleTapIn(bus),
                               style: ElevatedButton.styleFrom(
@@ -297,6 +301,19 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                       style: TextStyle(
                         color: Colors.grey.shade700,
                         fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+
+                if (_activeBusId != null && _activeBusId != bus.busId)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                    child: Text(
+                      'You already have an active trip on another bus. Tap out there before tapping in here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.orange.shade800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -450,6 +467,12 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       _showMessage('Could not identify device');
       return;
     }
+
+    // Client-side guard so users get immediate feedback before network call.
+    if (_activeBusId != null && _activeBusId != bus.busId) {
+      _showMessage('You are already tapped into another bus. Please tap out first.');
+      return;
+    }
     
     if (bus.currentOccupancy >= bus.capacity) {
       _showMessage('Bus is at full capacity');
@@ -532,6 +555,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       
       setState(() {
         _isUpdating = false;
+        _activeBusId = bus.busId;
         _isTappedIn = true;
       });
       // Student is now on the bus — cancel any waiting-at-stop record
@@ -597,6 +621,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
         
         setState(() {
           _isUpdating = false;
+          _activeBusId = null;
           _isTappedIn = false;
         });
         // Push the updated occupancy directly into BusProvider so the

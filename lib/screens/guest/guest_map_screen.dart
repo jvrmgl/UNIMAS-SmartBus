@@ -14,6 +14,8 @@ import '../../providers/announcement_provider.dart';
 import '../../widgets/common_widgets.dart';
 import '../../providers/notification_prefs_provider.dart';
 import '../../providers/dashboard_nav_provider.dart';
+import '../../services/device_service.dart';
+import '../../services/firestore_service.dart';
 import '../../services/smart_notification_service.dart';
 import '../../models/bus_stop_model.dart';
 import '../../constants/app_constants.dart';
@@ -34,6 +36,8 @@ class GuestMapScreen extends StatefulWidget {
 class _GuestMapScreenState extends State<GuestMapScreen> {
   final Completer<GoogleMapController> _mapController =
       Completer<GoogleMapController>();
+  final FirestoreService _firestoreService = FirestoreService();
+  final DeviceService _deviceService = DeviceService();
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   Marker? _originMarker;
@@ -857,10 +861,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                   ),
                   onPressed: () {
                     Navigator.pop(sheetCtx);
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => BusDetailScreen(bus: bus)));
+                    _openBusDetailsGuarded(bus);
                   },
                 ),
               ),
@@ -920,6 +921,57 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
 
   void _showNotificationsDialog() {
     showAppNotificationsSheet(context, 'student');
+  }
+
+  Future<void> _openBusDetailsGuarded(Bus selectedBus) async {
+    final deviceId = await _deviceService.getDeviceId();
+    final activeBusId = await _firestoreService.getDeviceActiveBusId(deviceId);
+
+    if (!mounted) return;
+
+    if (activeBusId != null && activeBusId != selectedBus.busId) {
+      final busProvider = context.read<BusProvider>();
+      Bus? activeBus;
+      try {
+        activeBus = busProvider.buses.firstWhere((b) => b.busId == activeBusId);
+      } catch (_) {
+        activeBus = null;
+      }
+
+      final goToActiveBus = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Active bus session detected'),
+          content: Text(
+            activeBus != null
+                ? 'You are currently tapped into Bus ${activeBus.busNumber}. Please tap out first before selecting another bus.'
+                : 'You are currently tapped into another bus. Please tap out first before selecting another bus.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            if (activeBus != null)
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Go to active bus'),
+              ),
+          ],
+        ),
+      );
+
+      if (goToActiveBus == true && activeBus != null && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => BusDetailScreen(bus: activeBus!)),
+        );
+      }
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => BusDetailScreen(bus: selectedBus)),
+    );
   }
 
   @override

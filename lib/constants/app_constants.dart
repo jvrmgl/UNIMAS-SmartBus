@@ -4,7 +4,10 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // Google Maps
-  static const String googleMapsApiKey = 'AIzaSyAWTeFEWb1hHmYND6zNIHlMcxJz-gPyGKI';
+  static const String googleMapsApiKey = String.fromEnvironment(
+    'GOOGLE_MAPS_API_KEY',
+    defaultValue: '',
+  );
   static const double defaultMapZoom = 15.0;
 
   // Location

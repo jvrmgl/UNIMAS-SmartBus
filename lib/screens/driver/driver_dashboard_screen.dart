@@ -406,37 +406,53 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Column(
                   children: [
-                    IconButton(
-                      onPressed: () => _decrementOccupancy(shiftProvider),
-                      icon: const Icon(Icons.remove_circle),
-                      color: Colors.red,
-                      iconSize: 30,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          onPressed: () => _decrementOccupancy(shiftProvider),
+                          icon: const Icon(Icons.remove_circle),
+                          color: Colors.red,
+                          iconSize: 30,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${bus.currentOccupancy}/${bus.capacity}',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () => _incrementOccupancy(shiftProvider),
+                          icon: const Icon(Icons.add_circle),
+                          color: Colors.green,
+                          iconSize: 30,
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              _isOccupancyEditorOpen = false;
+                            });
+                          },
+                          icon: const Icon(Icons.close),
+                          color: Colors.grey,
+                          tooltip: 'Close',
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 4),
                     Text(
-                      '${bus.currentOccupancy}/${bus.capacity}',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () => _incrementOccupancy(shiftProvider),
-                      icon: const Icon(Icons.add_circle),
-                      color: Colors.green,
-                      iconSize: 30,
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () {
-                        setState(() {
-                          _isOccupancyEditorOpen = false;
-                        });
-                      },
-                      icon: const Icon(Icons.close),
-                      color: Colors.grey,
-                      tooltip: 'Close',
+                      'Use manual adjustment only when students forgot to tap out.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.blue.shade100
+                            : Colors.blue.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),

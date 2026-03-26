@@ -13,6 +13,7 @@ import '../../constants/app_theme.dart';
 import '../../models/bus_model.dart';
 import '../../models/bus_stop_model.dart';
 import '../../models/schedule_image_model.dart';
+import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/common_widgets.dart';
 import 'report_screen.dart';
@@ -30,6 +31,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirestoreService _firestoreService = FirestoreService();
+  final DeviceService _deviceService = DeviceService();
   DashboardNavProvider? _dashboardNavProvider;
   // no expansion state needed
 
@@ -62,6 +64,57 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   }
 
   BusProvider? _busProviderRef;
+
+  Future<void> _openBusDetailsGuarded(Bus selectedBus) async {
+    final deviceId = await _deviceService.getDeviceId();
+    final activeBusId = await _firestoreService.getDeviceActiveBusId(deviceId);
+
+    if (!mounted) return;
+
+    if (activeBusId != null && activeBusId != selectedBus.busId) {
+      final busProvider = context.read<BusProvider>();
+      Bus? activeBus;
+      try {
+        activeBus = busProvider.buses.firstWhere((b) => b.busId == activeBusId);
+      } catch (_) {
+        activeBus = null;
+      }
+
+      final goToActiveBus = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Active bus session detected'),
+          content: Text(
+            activeBus != null
+                ? 'You are currently tapped into Bus ${activeBus.busNumber}. Please tap out first before selecting another bus.'
+                : 'You are currently tapped into another bus. Please tap out first before selecting another bus.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            if (activeBus != null)
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Go to active bus'),
+              ),
+          ],
+        ),
+      );
+
+      if (goToActiveBus == true && activeBus != null && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => BusDetailScreen(bus: activeBus!)),
+        );
+      }
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => BusDetailScreen(bus: selectedBus)),
+    );
+  }
 
   @override
   void dispose() {
@@ -515,10 +568,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                         ),
                       ),
                       TextButton(
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => BusDetailScreen(bus: bus)),
-                        ),
+                        onPressed: () => _openBusDetailsGuarded(bus),
                         child: const Text('Board Bus'),
                       ),
                     ],
