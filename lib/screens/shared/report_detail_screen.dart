@@ -1,9 +1,9 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/report_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
 
 class ReportDetailScreen extends StatefulWidget {
@@ -24,7 +24,6 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   final TextEditingController _messageController = TextEditingController();
   final TextEditingController _adminNotesController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
-  final DeviceService _deviceService = DeviceService();
   bool _isSending = false;
   bool _isUpdating = false;
   bool _isStatusPanelExpanded = false;
@@ -69,7 +68,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
       final authProvider = context.read<AuthProvider>();
       return authProvider.firebaseUser?.uid ?? 'admin';
     }
-    return _deviceService.getDeviceId();
+    return firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? 'guest';
   }
 
   Future<void> _sendMessage() async {

@@ -82,6 +82,19 @@ class AuthService {
     }
   }
 
+  // Ensure guest users have an anonymous Firebase auth session so security
+  // rules can safely scope data access without forcing explicit login UI.
+  Future<bool> signInAnonymouslyIfNeeded() async {
+    if (_auth.currentUser != null) return true;
+    try {
+      await _auth.signInAnonymously();
+      return true;
+    } catch (e) {
+      debugPrint('Anonymous sign-in failed: $e');
+      return false;
+    }
+  }
+
   // Sign out
   Future<void> signOut() async {
     await _auth.signOut();

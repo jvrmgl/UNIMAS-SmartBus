@@ -8,7 +8,10 @@ service cloud.firestore {
     }
 
     function userRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+          : null;
     }
 
     function isAdmin() {
@@ -17,6 +20,11 @@ service cloud.firestore {
 
     function isAdminOrDriver() {
       return isSignedIn() && (userRole() == 'admin' || userRole() == 'driver');
+    }
+
+    function isReportOwner(reportId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/reports/$(reportId)).data.reporterUid == request.auth.uid;
     }
 
     match /users/{userId} {
@@ -91,12 +99,17 @@ service cloud.firestore {
     }
 
     match /reports/{reportId} {
-      allow read, create: if true;
-      allow update, delete: if isAdminOrDriver();
+      allow read: if isAdmin() || isReportOwner(reportId);
+      allow create: if isSignedIn() &&
+        request.resource.data.reporterUid == request.auth.uid;
+      allow update, delete: if isAdmin();
 
       match /messages/{messageId} {
-        allow read, create: if true;
-        allow update, delete: if isAdminOrDriver();
+        allow read: if isAdmin() || isReportOwner(reportId);
+        allow create: if isSignedIn() &&
+          request.resource.data.senderId == request.auth.uid &&
+          (isAdmin() || isReportOwner(reportId));
+        allow update, delete: if isAdmin();
       }
     }
 

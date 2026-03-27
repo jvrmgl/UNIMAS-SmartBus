@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/report_model.dart';
@@ -95,6 +96,17 @@ class _ReportScreenState extends State<ReportScreen>
     return urls;
   }
 
+  Future<String?> _getReporterUid() async {
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser != null) return auth.currentUser!.uid;
+    try {
+      final credential = await auth.signInAnonymously();
+      return credential.user?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _submitReport() async {
     final description = _descriptionController.text.trim();
     if (description.isEmpty) {
@@ -103,6 +115,14 @@ class _ReportScreenState extends State<ReportScreen>
     }
 
     setState(() => _isSubmitting = true);
+
+    final reporterUid = await _getReporterUid();
+    if (reporterUid == null) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      _showMessage('Unable to identify current user session. Please try again.');
+      return;
+    }
 
     final deviceId = await _deviceService.getDeviceId();
     final reportId = 'report_${DateTime.now().millisecondsSinceEpoch}';
@@ -119,6 +139,7 @@ class _ReportScreenState extends State<ReportScreen>
     final report = Report(
       reportId: reportId,
       deviceId: deviceId,
+      reporterUid: reporterUid,
       busId: busId,
       routeId: routeId,
       category: _category,
@@ -297,16 +318,16 @@ class _ReportScreenState extends State<ReportScreen>
   }
 
   Widget _buildMyReportsTab() {
-    return FutureBuilder<String>(
-      future: _deviceService.getDeviceId(),
+    return FutureBuilder<String?>(
+      future: _getReporterUid(),
       builder: (context, snapshot) {
-        final deviceId = snapshot.data;
-        if (deviceId == null) {
+        final reporterUid = snapshot.data;
+        if (reporterUid == null) {
           return const Center(child: CircularProgressIndicator());
         }
 
         return StreamBuilder<List<Report>>(
-          stream: _firestoreService.getReportsByDeviceId(deviceId),
+          stream: _firestoreService.getReportsByReporterUid(reporterUid),
           builder: (context, reportSnapshot) {
             if (reportSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());

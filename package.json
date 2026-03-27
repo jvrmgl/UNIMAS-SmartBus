@@ -1,0 +1,23 @@
+{
+  "name": "unimas-smartbus-workspace",
+  "description": "UNIMAS SmartBus: Flutter app + Firebase backend",
+  "private": true,
+  "scripts": {
+    "ops:health": "node functions/scripts/health_check.js",
+    "ops:deploy": "firebase.cmd deploy --project unimas-smartbus",
+    "ops:deploy:rules": "firebase.cmd deploy --project unimas-smartbus --only firestore:rules",
+    "ops:deploy:functions": "firebase.cmd deploy --project unimas-smartbus --only functions",
+    "ops:deploy:dry": "firebase.cmd deploy --project unimas-smartbus --dry-run",
+    "app:analyze": "flutter analyze",
+    "app:test": "flutter test",
+    "app:build:apk": "flutter build apk --release",
+    "migrate:reports:dry": "cd functions && node scripts/backfill_reporter_uid_cli.js --project unimas-smartbus --dryRun true --limit 200",
+    "migrate:reports:live": "cd functions && node scripts/backfill_reporter_uid_cli.js --project unimas-smartbus --dryRun false --limit 200",
+    "setup": "npm --version && flutter --version && firebase.cmd --version"
+  },
+  "engines": {
+    "node": ">=20",
+    "npm": ">=9"
+  },
+  "devDependencies": {}
+}

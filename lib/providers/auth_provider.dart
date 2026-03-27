@@ -32,11 +32,18 @@ class AuthProvider extends ChangeNotifier {
     // can rely on both _firebaseUser and _currentUser being up-to-date.
     _authService.authStateChanges.listen((firebaseUser) async {
       _firebaseUser = firebaseUser;
-      if (firebaseUser != null) {
-        _currentUser = await _firestoreService.getUserData(firebaseUser.uid);
-      } else {
+      if (firebaseUser == null) {
         _currentUser = null;
+        // Keep guest UX login-free while still enforcing auth-based rules.
+        final anonReady = await _authService.signInAnonymouslyIfNeeded();
+        if (!anonReady) {
+          _isInitialized = true;
+          notifyListeners();
+        }
+        return;
       }
+
+      _currentUser = await _firestoreService.getUserData(firebaseUser.uid);
       _isInitialized = true;
       notifyListeners();
     });

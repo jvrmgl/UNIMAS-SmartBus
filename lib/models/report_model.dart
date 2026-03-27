@@ -5,6 +5,7 @@ enum ReportMessageSender { guest, admin }
 class Report {
   final String reportId;
   final String? deviceId; // Can be anonymous
+  final String? reporterUid; // Firebase Auth UID (email user or anonymous)
   final String? busId;
   final String? routeId;
   final ReportCategory category;
@@ -18,6 +19,7 @@ class Report {
   Report({
     required this.reportId,
     this.deviceId,
+    this.reporterUid,
     this.busId,
     this.routeId,
     required this.category,
@@ -35,6 +37,7 @@ class Report {
       // Keep legacy studentId for backward compatibility with existing queries.
       'studentId': deviceId,
       'deviceId': deviceId,
+      'reporterUid': reporterUid,
       'busId': busId,
       'routeId': routeId,
       'category': category.toString().split('.').last,
@@ -52,6 +55,7 @@ class Report {
       reportId: map['reportId'] as String,
       // Prefer deviceId, fallback to legacy studentId.
       deviceId: (map['deviceId'] ?? map['studentId']) as String?,
+      reporterUid: map['reporterUid'] as String?,
       busId: map['busId'] as String?,
       routeId: map['routeId'] as String?,
       category: ReportCategory.values.firstWhere(
@@ -73,6 +77,7 @@ class Report {
   Report copyWith({
     String? reportId,
     String? deviceId,
+    String? reporterUid,
     String? busId,
     String? routeId,
     ReportCategory? category,
@@ -86,6 +91,7 @@ class Report {
     return Report(
       reportId: reportId ?? this.reportId,
       deviceId: deviceId ?? this.deviceId,
+      reporterUid: reporterUid ?? this.reporterUid,
       busId: busId ?? this.busId,
       routeId: routeId ?? this.routeId,
       category: category ?? this.category,

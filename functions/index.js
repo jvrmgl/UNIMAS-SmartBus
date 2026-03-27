@@ -107,9 +107,6 @@ exports.sendAnnouncementNotification = functions
     } catch (error) {
       console.error('Error sending announcement notification:', error);
       console.error('Error details:', error.code, error.message);
-      if (error.errorInfo) {
-        console.error('Error info:', JSON.stringify(error.errorInfo));
-      }
       throw new functions.https.HttpsError('internal', 'Failed to send notification: ' + error.message);
     }
   });
@@ -194,9 +191,6 @@ exports.resendAnnouncementNotification = functions
     } catch (error) {
       console.error('Error resending announcement notification:', error);
       console.error('Error details:', error.code, error.message);
-      if (error.errorInfo) {
-        console.error('Error info:', JSON.stringify(error.errorInfo));
-      }
       throw new functions.https.HttpsError('internal', 'Failed to resend notification: ' + error.message);
     }
   });
@@ -499,4 +493,123 @@ exports.onBusActivated = functions
       }
     );
     return null;
+  });
+
+// ── 5. One-time migration: backfill reporterUid on legacy reports ───────────
+// Maps old report.deviceId/studentId -> device_tokens/{deviceId}.userId.
+// Only fills records where reporterUid is missing, and only when a mapping
+// exists. Run repeatedly with nextCursor until exhausted.
+exports.backfillReportReporterUid = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+
+    // Rate limit: max 2 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 2, windowMs: 60_000 });
+
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can run this migration.'
+      );
+    }
+
+    const limit = Math.min(Math.max(Number(data?.limit || 200), 1), 1000);
+    const dryRun = Boolean(data?.dryRun ?? true);
+    const cursor = typeof data?.cursor === 'string' && data.cursor.trim()
+      ? data.cursor.trim()
+      : null;
+
+    let query = admin
+      .firestore()
+      .collection('reports')
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(limit);
+    if (cursor) {
+      query = query.startAfter(cursor);
+    }
+
+    const snap = await query.get();
+    if (snap.empty) {
+      return {
+        processed: 0,
+        updated: 0,
+        skippedNoDeviceId: 0,
+        skippedNoMapping: 0,
+        skippedAlreadyOwned: 0,
+        dryRun,
+        done: true,
+        nextCursor: null,
+      };
+    }
+
+    let processed = 0;
+    let updated = 0;
+    let skippedNoDeviceId = 0;
+    let skippedNoMapping = 0;
+    let skippedAlreadyOwned = 0;
+
+    const batch = admin.firestore().batch();
+
+    for (const doc of snap.docs) {
+      processed += 1;
+      const report = doc.data();
+
+      if (report.reporterUid) {
+        skippedAlreadyOwned += 1;
+        continue;
+      }
+
+      const deviceId = report.deviceId || report.studentId;
+      if (!deviceId || typeof deviceId !== 'string') {
+        skippedNoDeviceId += 1;
+        continue;
+      }
+
+      const tokenDoc = await admin
+        .firestore()
+        .collection('device_tokens')
+        .doc(deviceId)
+        .get();
+
+      const mappedUid = tokenDoc.exists ? tokenDoc.data()?.userId : null;
+      if (!mappedUid || typeof mappedUid !== 'string') {
+        skippedNoMapping += 1;
+        continue;
+      }
+
+      updated += 1;
+      if (!dryRun) {
+        batch.update(doc.ref, { reporterUid: mappedUid });
+      }
+    }
+
+    if (!dryRun && updated > 0) {
+      await batch.commit();
+    }
+
+    const lastDoc = snap.docs[snap.docs.length - 1];
+    const nextCursor = lastDoc.id;
+
+    return {
+      processed,
+      updated,
+      skippedNoDeviceId,
+      skippedNoMapping,
+      skippedAlreadyOwned,
+      dryRun,
+      done: snap.docs.length < limit,
+      nextCursor,
+    };
   });

@@ -79,7 +79,10 @@ class NotificationService {
     // Get FCM token
     String? token = await _firebaseMessaging.getToken();
     if (kDebugMode) {
-      debugPrint('FCM Token: $token');
+      final masked = (token != null && token.length > 12)
+          ? '${token.substring(0, 6)}...${token.substring(token.length - 6)}'
+          : token;
+      debugPrint('FCM Token (masked): $masked');
     }
 
     // Handle foreground messages
