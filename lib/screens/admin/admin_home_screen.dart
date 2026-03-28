@@ -12,24 +12,49 @@ class AdminHomeScreen extends StatefulWidget {
 
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _currentIndex = 0;
+  final List<Widget?> _screens = List<Widget?>.filled(3, null);
 
-  final List<Widget> _screens = const [
-    AdminMapScreen(),
-    AdminDashboardScreen(),
-    SettingsScreen(),
-  ];
+  Widget _buildScreen(int index) {
+    switch (index) {
+      case 0:
+        return const AdminMapScreen();
+      case 1:
+        return const AdminDashboardScreen();
+      case 2:
+        return const SettingsScreen();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  void _ensureScreenCreated(int index) {
+    _screens[index] ??= _buildScreen(index);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureScreenCreated(_currentIndex);
+  }
 
   @override
   Widget build(BuildContext context) {
+    _ensureScreenCreated(_currentIndex);
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: List<Widget>.generate(
+          3,
+          (i) => _screens[i] ?? const SizedBox.shrink(),
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _currentIndex = index),
+        onDestinationSelected: (index) => setState(() {
+          _currentIndex = index;
+          _ensureScreenCreated(_currentIndex);
+        }),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.map_outlined),

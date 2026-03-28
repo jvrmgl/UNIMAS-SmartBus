@@ -155,6 +155,11 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   }
 
   Future<List<LatLng>> _fetchRoutePolyline(List<LatLng> stopPoints) async {
+    if (!AppConstants.enableDirectionsApi ||
+        AppConstants.googleMapsApiKey.isEmpty) {
+      return stopPoints;
+    }
+
     if (stopPoints.length < 2) return stopPoints;
 
     final origin =

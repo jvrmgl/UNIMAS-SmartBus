@@ -307,6 +307,11 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   }
 
   Future<LatLng?> _geocodeAddress(String address) async {
+    if (!AppConstants.enableGeocodingApi ||
+        AppConstants.googleMapsApiKey.isEmpty) {
+      return null;
+    }
+
     final trimmed = address.trim();
     if (trimmed.isEmpty) {
       return null;
@@ -340,6 +345,11 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   }
 
   Future<List<String>> _fetchSuggestions(String input) async {
+    if (!AppConstants.enablePlacesAutocompleteApi ||
+        AppConstants.googleMapsApiKey.isEmpty) {
+      return [];
+    }
+
     final trimmed = input.trim();
     if (trimmed.length < 3) return [];
 
@@ -442,6 +452,11 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   }
 
   Future<void> _handleSearch({required bool isOrigin}) async {
+    if (!AppConstants.enableGeocodingApi) {
+      _showMessage('Search is temporarily disabled to reduce map costs.');
+      return;
+    }
+
     final query = isOrigin
         ? _originController.text
         : _destinationController.text;

@@ -10,6 +10,21 @@ class AppConstants {
   );
   static const double defaultMapZoom = 15.0;
 
+  // Cost-control flags for billable Google Maps Web Services.
+  // Keep map rendering enabled, but gate expensive HTTP API calls.
+  static const bool enableGeocodingApi = bool.fromEnvironment(
+    'ENABLE_GEOCODING_API',
+    defaultValue: false,
+  );
+  static const bool enablePlacesAutocompleteApi = bool.fromEnvironment(
+    'ENABLE_PLACES_AUTOCOMPLETE_API',
+    defaultValue: false,
+  );
+  static const bool enableDirectionsApi = bool.fromEnvironment(
+    'ENABLE_DIRECTIONS_API',
+    defaultValue: false,
+  );
+
   // Location
   static const int locationUpdateIntervalSeconds = 5;
   static const int locationDistanceFilterMeters = 0;

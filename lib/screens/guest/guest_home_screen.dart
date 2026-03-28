@@ -15,16 +15,29 @@ class GuestHomeScreen extends StatefulWidget {
 class _GuestHomeScreenState extends State<GuestHomeScreen> {
   int _currentIndex = 0;
   DashboardNavProvider? _dashboardNavProviderRef;
+  final List<Widget?> _screens = List<Widget?>.filled(3, null);
 
-  final List<Widget> _screens = const [
-    GuestMapScreen(),
-    StudentDashboardScreen(),
-    SettingsScreen(),
-  ];
+  Widget _buildScreen(int index) {
+    switch (index) {
+      case 0:
+        return const GuestMapScreen();
+      case 1:
+        return const StudentDashboardScreen();
+      case 2:
+        return const SettingsScreen();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  void _ensureScreenCreated(int index) {
+    _screens[index] ??= _buildScreen(index);
+  }
 
   @override
   void initState() {
     super.initState();
+    _ensureScreenCreated(_currentIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _dashboardNavProviderRef = context.read<DashboardNavProvider>();
@@ -42,26 +55,39 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     if (!mounted) return;
     final nav = _dashboardNavProviderRef ?? context.read<DashboardNavProvider>();
     if (nav.shouldSwitchToHome && mounted) {
-      setState(() => _currentIndex = 1);
+      setState(() {
+        _currentIndex = 1;
+        _ensureScreenCreated(_currentIndex);
+      });
       nav.consumeHomeSwitch();
     }
     if (nav.shouldSwitchToMap && mounted) {
-      setState(() => _currentIndex = 0);
+      setState(() {
+        _currentIndex = 0;
+        _ensureScreenCreated(_currentIndex);
+      });
       nav.consumeMapSwitch();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    _ensureScreenCreated(_currentIndex);
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: List<Widget>.generate(
+          3,
+          (i) => _screens[i] ?? const SizedBox.shrink(),
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _currentIndex = index),
+        onDestinationSelected: (index) => setState(() {
+          _currentIndex = index;
+          _ensureScreenCreated(_currentIndex);
+        }),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.map_outlined),
