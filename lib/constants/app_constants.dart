@@ -59,7 +59,6 @@ class AppConstants {
 
   // Navigation routes
   static const String loginRoute = '/login';
-  static const String signupRoute = '/signup';
   static const String studentDashboardRoute = '/student';
   static const String driverDashboardRoute = '/driver';
   static const String adminDashboardRoute = '/admin';

@@ -268,38 +268,11 @@ class _LoginScreenState extends State<LoginScreen>
                             child: const Text('Forgot Password?'),
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        // Divider
-                        Row(
-                          children: [
-                            Expanded(child: Divider(color: cs.outlineVariant)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                'or',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                            Expanded(child: Divider(color: cs.outlineVariant)),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        // Sign Up link
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "Don't have an account? ",
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context)
-                                    .pushReplacementNamed('/signup');
-                              },
-                              child: const Text('Sign Up'),
-                            ),
-                          ],
+                        const SizedBox(height: 12),
+                        Text(
+                          'Accounts are managed by admin. Contact administrator for staff access.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                          textAlign: TextAlign.center,
                         ),
                         SizedBox(height: mq.padding.bottom + 16),
                       ],
