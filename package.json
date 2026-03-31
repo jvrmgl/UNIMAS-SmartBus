@@ -10,10 +10,8 @@
     "ops:deploy:dry": "firebase.cmd deploy --project unimas-smartbus --dry-run",
     "app:analyze": "flutter analyze",
     "app:test": "flutter test",
-    "app:run:lowcost": "flutter run --dart-define=ENABLE_GEOCODING_API=false --dart-define=ENABLE_PLACES_AUTOCOMPLETE_API=false --dart-define=ENABLE_DIRECTIONS_API=false",
-    "app:run:mapsfull": "flutter run --dart-define=ENABLE_GEOCODING_API=true --dart-define=ENABLE_PLACES_AUTOCOMPLETE_API=true --dart-define=ENABLE_DIRECTIONS_API=true",
+    "app:run": "flutter run",
     "app:build:apk": "flutter build apk --release",
-    "app:build:apk:lowcost": "flutter build apk --release --dart-define=ENABLE_GEOCODING_API=false --dart-define=ENABLE_PLACES_AUTOCOMPLETE_API=false --dart-define=ENABLE_DIRECTIONS_API=false",
     "migrate:reports:dry": "cd functions && node scripts/backfill_reporter_uid_cli.js --project unimas-smartbus --dryRun true --limit 200",
     "migrate:reports:live": "cd functions && node scripts/backfill_reporter_uid_cli.js --project unimas-smartbus --dryRun false --limit 200",
     "setup": "npm --version && flutter --version && firebase.cmd --version"

@@ -14,15 +14,15 @@ class AppConstants {
   // Keep map rendering enabled, but gate expensive HTTP API calls.
   static const bool enableGeocodingApi = bool.fromEnvironment(
     'ENABLE_GEOCODING_API',
-    defaultValue: false,
+    defaultValue: true,
   );
   static const bool enablePlacesAutocompleteApi = bool.fromEnvironment(
     'ENABLE_PLACES_AUTOCOMPLETE_API',
-    defaultValue: false,
+    defaultValue: true,
   );
   static const bool enableDirectionsApi = bool.fromEnvironment(
     'ENABLE_DIRECTIONS_API',
-    defaultValue: false,
+    defaultValue: true,
   );
 
   // Location
