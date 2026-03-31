@@ -17,6 +17,12 @@ if (localPropertiesFile.exists()) {
 def mapsApiKey = (project.findProperty("GOOGLE_MAPS_API_KEY")
     ?: localProperties.getProperty("GOOGLE_MAPS_API_KEY")) ?: ""
 
+if (!mapsApiKey?.trim()) {
+    throw new RuntimeException(
+        "GOOGLE_MAPS_API_KEY is missing. Set it in android/local.properties or pass -PGOOGLE_MAPS_API_KEY=..."
+    )
+}
+
 android {
     namespace = "com.example.unimas_smartbus"
     compileSdk = flutter.compileSdkVersion

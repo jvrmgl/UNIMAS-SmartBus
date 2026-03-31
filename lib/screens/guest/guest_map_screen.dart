@@ -55,6 +55,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   List<String> _originSuggestions = [];
   List<String> _destinationSuggestions = [];
   bool _isDetectingLocation = false;
+  bool _hasLocationPermission = false;
 
   // FocusNodes so we can detect when search bars gain/lose focus
   final FocusNode _originFocusNode = FocusNode();
@@ -655,10 +656,14 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
         if (!mounted) return;
         
         if (!granted) {
+          setState(() => _hasLocationPermission = false);
           _showMessage('Location permission denied');
           setState(() => _isDetectingLocation = false);
           return;
         }
+        setState(() => _hasLocationPermission = true);
+      } else {
+        setState(() => _hasLocationPermission = true);
       }
 
       // Get current location
@@ -1050,8 +1055,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                   zoom: AppConstants.defaultMapZoom,
                 ),
                 markers: markers,
-                myLocationEnabled: true,
-                myLocationButtonEnabled: true,
+                myLocationEnabled: _hasLocationPermission,
+                myLocationButtonEnabled: _hasLocationPermission,
                 // Tapping the map background dismisses keyboard and suggestions.
                 onTap: (_) {
                   FocusScope.of(context).unfocus();
