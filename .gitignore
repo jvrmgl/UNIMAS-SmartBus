@@ -50,3 +50,7 @@ app.*.map.json
 ios/Runner/GoogleService-Info.plist
 .env
 *.env
+.env.*
+
+# Local Python env (used for local scripts/tools only)
+.venv/

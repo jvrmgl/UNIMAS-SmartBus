@@ -18,6 +18,7 @@ const { execSync } = require('node:child_process');
 
 const PROJECT = 'unimas-smartbus';
 const REGION = 'asia-southeast1';
+const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || '';
 
 function log(level, msg) {
   const prefix = {
@@ -101,11 +102,16 @@ async function checkFunctionsDeploy() {
 
 async function checkAnonAuth() {
   log('info', 'Checking anonymous auth connectivity...');
+
+  if (!FIREBASE_WEB_API_KEY) {
+    log('warn', 'FIREBASE_WEB_API_KEY is not set; skipping anonymous auth connectivity check');
+    return true;
+  }
   
   try {
     // Use Node.js fetch to test connectivity to Firestore auth endpoint
     const response = await fetch(
-      `https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser?key=AIzaSyCC7XHbA6k-jLiOq8FBOyB4EWoZ7ALM7EY`,
+      `https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser?key=${encodeURIComponent(FIREBASE_WEB_API_KEY)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
