@@ -9,6 +9,7 @@ import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../widgets/common_widgets.dart';
 import '../../providers/driver_shift_provider.dart';
+import '../../models/bus_model.dart';
 import '../../models/bus_stop_model.dart';
 import '../../services/location_service.dart';
 import '../../utils/map_marker_helper.dart';
@@ -25,6 +26,10 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
   BitmapDescriptor? _busMarkerIcon;
   BitmapDescriptor? _busInactiveMarkerIcon;
   BitmapDescriptor? _stopMarkerIcon;
+  double? _smoothedSpeedKmH;
+  double? _lastBusLat;
+  double? _lastBusLng;
+  DateTime? _lastBusUpdatedAt;
 
   @override
   void initState() {
@@ -191,6 +196,9 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             child: Consumer3<DriverShiftProvider, RouteProvider, BusProvider>(
               builder: (context, shiftProvider, routeProvider, busProvider, _) {
                 final assignedBus = shiftProvider.assignedBus;
+                if (assignedBus != null) {
+                  _updateDynamicSpeed(assignedBus);
+                }
 
                 String nextStopName = '--';
                 String etaMinutes = '--';
@@ -232,21 +240,23 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                         }
                       }
 
-                        final nextStopIndex = (currentStopIndex + 1) % stops.length;
+                      final isAtCurrentStop = minDistanceMeters <= 80;
+                      final nextStopIndex = isAtCurrentStop
+                          ? (currentStopIndex + 1) % stops.length
+                          : currentStopIndex;
                       final nextStop = stops[nextStopIndex];
-
-                      final nextDistanceMeters = Geolocator.distanceBetween(
-                        currentBus.latitude,
-                        currentBus.longitude,
-                        nextStop.latitude,
-                        nextStop.longitude,
+                      final legDistances =
+                          routeProvider.getRouteLegDistances(route.routeId);
+                      final eta = _estimateRouteStopEtaMinutes(
+                        bus: currentBus,
+                        orderedStops: stops,
+                        targetIndex: nextStopIndex,
+                        legDistancesMeters: legDistances,
                       );
-
-                      const estimatedSpeedKmH = 25.0;
-                      final eta = ((nextDistanceMeters / 1000) / estimatedSpeedKmH * 60).ceil();
+                      final displayEta = eta == null || eta <= 0 ? 1 : eta;
 
                       nextStopName = nextStop.stopName;
-                      etaMinutes = '${eta <= 0 ? 1 : eta} min';
+                      etaMinutes = '$displayEta min';
                     }
                   } catch (_) {}
                 }
@@ -414,5 +424,132 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         ),
       ],
     );
+  }
+
+  void _updateDynamicSpeed(Bus bus) {
+    final currentUpdatedAt = bus.lastUpdated;
+
+    if (_lastBusLat != null &&
+        _lastBusLng != null &&
+        _lastBusUpdatedAt != null &&
+        currentUpdatedAt.isAfter(_lastBusUpdatedAt!)) {
+      final distanceMeters = Geolocator.distanceBetween(
+        _lastBusLat!,
+        _lastBusLng!,
+        bus.latitude,
+        bus.longitude,
+      );
+      final elapsedSeconds =
+          currentUpdatedAt.difference(_lastBusUpdatedAt!).inSeconds;
+
+      if (elapsedSeconds > 0) {
+        final rawSpeedKmH =
+            (distanceMeters / elapsedSeconds) * 3.6; // m/s -> km/h
+
+        // Ignore noisy GPS jumps and near-zero drift while idling.
+        if (rawSpeedKmH >= 3 && rawSpeedKmH <= 90) {
+          _smoothedSpeedKmH = _smoothedSpeedKmH == null
+              ? rawSpeedKmH
+              : (_smoothedSpeedKmH! * 0.7) + (rawSpeedKmH * 0.3);
+        }
+      }
+    }
+
+    _lastBusLat = bus.latitude;
+    _lastBusLng = bus.longitude;
+    _lastBusUpdatedAt = currentUpdatedAt;
+  }
+
+  int _estimateEtaMinutes(double distanceMeters) {
+    final speedKmH = (_smoothedSpeedKmH ?? 25).clamp(8, 50).toDouble();
+    return ((distanceMeters / 1000) / speedKmH * 60).ceil();
+  }
+
+  int? _estimateRouteStopEtaMinutes({
+    required Bus bus,
+    required List<BusStop> orderedStops,
+    required int targetIndex,
+    List<double>? legDistancesMeters,
+  }) {
+    if (orderedStops.isEmpty) return null;
+
+    final currentIndex = _nearestRouteStopIndex(bus, orderedStops);
+    final directToCurrentMeters = Geolocator.distanceBetween(
+      bus.latitude,
+      bus.longitude,
+      orderedStops[currentIndex].latitude,
+      orderedStops[currentIndex].longitude,
+    );
+
+    final routeMeters = _routePathDistanceMeters(
+      orderedStops,
+      currentIndex,
+      targetIndex,
+      legDistancesMeters: legDistancesMeters,
+    );
+
+    final totalMeters = targetIndex == currentIndex
+        ? Geolocator.distanceBetween(
+            bus.latitude,
+            bus.longitude,
+            orderedStops[targetIndex].latitude,
+            orderedStops[targetIndex].longitude,
+          )
+        : directToCurrentMeters + routeMeters;
+
+    return _estimateEtaMinutes(totalMeters);
+  }
+
+  int _nearestRouteStopIndex(Bus bus, List<BusStop> orderedStops) {
+    int nearestIndex = 0;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < orderedStops.length; i++) {
+      final distance = Geolocator.distanceBetween(
+        bus.latitude,
+        bus.longitude,
+        orderedStops[i].latitude,
+        orderedStops[i].longitude,
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestIndex = i;
+      }
+    }
+
+    return nearestIndex;
+  }
+
+  double _routePathDistanceMeters(
+    List<BusStop> orderedStops,
+    int fromIndex,
+    int toIndex,
+    {List<double>? legDistancesMeters,}
+  ) {
+    if (orderedStops.isEmpty || fromIndex == toIndex) return 0;
+
+    double totalMeters = 0;
+    int currentIndex = fromIndex;
+
+    while (currentIndex != toIndex) {
+      final nextIndex = (currentIndex + 1) % orderedStops.length;
+      final canUseLegDistance =
+          legDistancesMeters != null &&
+          legDistancesMeters.isNotEmpty &&
+          currentIndex < legDistancesMeters.length;
+      if (canUseLegDistance) {
+        totalMeters += legDistancesMeters[currentIndex];
+      } else {
+        totalMeters += Geolocator.distanceBetween(
+          orderedStops[currentIndex].latitude,
+          orderedStops[currentIndex].longitude,
+          orderedStops[nextIndex].latitude,
+          orderedStops[nextIndex].longitude,
+        );
+      }
+      currentIndex = nextIndex;
+    }
+
+    return totalMeters;
   }
 }

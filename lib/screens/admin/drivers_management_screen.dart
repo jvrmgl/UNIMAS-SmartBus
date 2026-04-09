@@ -19,6 +19,15 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
   final AuthService _authService = AuthService();
   List<User> _drivers = [];
   bool _isLoading = true;
+  static final RegExp _emailRegex =
+      RegExp(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+
+  bool _isValidEmail(String email) => _emailRegex.hasMatch(email.trim());
+
+  bool _isAllowedDriverEmailDomain(String email) {
+    final e = email.trim().toLowerCase();
+    return e.endsWith('@unimas.my') || e.endsWith('@unimas.edu.my');
+  }
 
   void _showSafeSnackBar(
     BuildContext scaffoldContext,
@@ -358,6 +367,7 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     bool isCreating = false;
+    String? submitError;
 
     showDialog(
       context: context,
@@ -389,7 +399,10 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value?.isEmpty ?? true) return 'Required';
-                    if (!value!.contains('@')) return 'Invalid email';
+                    if (!_isValidEmail(value!)) return 'Invalid email format';
+                    if (!_isAllowedDriverEmailDomain(value)) {
+                      return 'Driver email must end with @unimas.my or @unimas.edu.my';
+                    }
                     return null;
                   },
                 ),
@@ -407,6 +420,16 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                     return null;
                   },
                 ),
+                if (submitError != null) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      submitError!,
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -421,14 +444,25 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                 ? null
                 : () async {
               if (formKey.currentState!.validate()) {
-                setDialogState(() => isCreating = true);
-                final result = await _authService.createUserAsAdminWithResult(
-                  email: emailController.text.trim(),
-                  password: passwordController.text.trim(),
-                  fullName: nameController.text.trim(),
-                  phoneNumber: '',
-                  role: UserRole.driver,
-                );
+                setDialogState(() {
+                  isCreating = true;
+                  submitError = null;
+                });
+
+                AdminCreateUserResult result;
+                try {
+                  result = await _authService.createUserAsAdminWithResult(
+                    email: emailController.text.trim(),
+                    password: passwordController.text.trim(),
+                    fullName: nameController.text.trim(),
+                    phoneNumber: '',
+                    role: UserRole.driver,
+                  );
+                } catch (e) {
+                  result = AdminCreateUserResult(
+                    error: 'Failed to create driver account: $e',
+                  );
+                }
 
                 if (!dialogContext.mounted) return;
                 if (result.isSuccess && result.user != null) {
@@ -449,10 +483,13 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                   );
                   _refreshDriversSilently();
                 } else {
-                  setDialogState(() => isCreating = false);
+                  setDialogState(() {
+                    isCreating = false;
+                    submitError = result.error ?? 'Failed to create driver account';
+                  });
                   _showSafeSnackBar(
                     scaffoldContext,
-                    result.error ?? 'Failed to create driver account',
+                    submitError!,
                     backgroundColor: Colors.red,
                   );
                 }

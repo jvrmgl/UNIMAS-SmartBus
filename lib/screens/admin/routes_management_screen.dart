@@ -17,6 +17,7 @@ class RoutesManagementScreen extends StatefulWidget {
 class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   bool _isFabExpanded = false;
+  bool _isRecomputingEta = false;
 
   @override
   void initState() {
@@ -33,47 +34,100 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Routes'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.location_on),
-            onPressed: () => _showManageStopsScreen(),
-            tooltip: 'Manage Bus Stops',
-          ),
-        ],
       ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (_isFabExpanded) ...[
-            FloatingActionButton.extended(
-              heroTag: 'addRouteFab',
-              onPressed: () {
-                setState(() => _isFabExpanded = false);
-                _showAddRouteDialog();
-              },
-              icon: const Icon(Icons.route),
-              label: const Text('Add Route'),
-            ),
-            const SizedBox(height: 10),
-            FloatingActionButton.extended(
-              heroTag: 'addBusStopFab',
-              onPressed: () {
-                setState(() => _isFabExpanded = false);
-                _showAddBusStopMapDialog(context);
-              },
-              icon: const Icon(Icons.add_location_alt),
-              label: const Text('Add Bus Stops'),
-            ),
-            const SizedBox(height: 10),
-          ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              final offsetAnimation = Tween<Offset>(
+                begin: const Offset(0, 0.12),
+                end: Offset.zero,
+              ).animate(animation);
+
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: offsetAnimation,
+                  child: child,
+                ),
+              );
+            },
+            child: _isFabExpanded
+                ? Column(
+                    key: const ValueKey('fabExpandedActions'),
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      FloatingActionButton.extended(
+                        heroTag: 'recomputeEtaFab',
+                        onPressed: _isRecomputingEta
+                            ? null
+                            : () {
+                                setState(() => _isFabExpanded = false);
+                                _recomputeEtaLegs();
+                              },
+                        icon: _isRecomputingEta
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.schedule_send),
+                        label: const Text('Update Routes ETA'),
+                      ),
+                      const SizedBox(height: 10),
+                      FloatingActionButton.extended(
+                        heroTag: 'manageStopsFab',
+                        onPressed: () {
+                          setState(() => _isFabExpanded = false);
+                          _showManageStopsScreen();
+                        },
+                        icon: const Icon(Icons.location_on),
+                        label: const Text('Manage Bus Stops'),
+                      ),
+                      const SizedBox(height: 10),
+                      FloatingActionButton.extended(
+                        heroTag: 'addRouteFab',
+                        onPressed: () {
+                          setState(() => _isFabExpanded = false);
+                          _showAddRouteDialog();
+                        },
+                        icon: const Icon(Icons.route),
+                        label: const Text('Add Route'),
+                      ),
+                      const SizedBox(height: 10),
+                      FloatingActionButton.extended(
+                        heroTag: 'addBusStopFab',
+                        onPressed: () {
+                          setState(() => _isFabExpanded = false);
+                          _showAddBusStopMapDialog(context);
+                        },
+                        icon: const Icon(Icons.add_location_alt),
+                        label: const Text('Add Bus Stops'),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  )
+                : const SizedBox.shrink(
+                    key: ValueKey('fabCollapsedActions'),
+                  ),
+          ),
           FloatingActionButton.extended(
             heroTag: 'mainFab',
             onPressed: () {
               setState(() => _isFabExpanded = !_isFabExpanded);
             },
-            icon: Icon(_isFabExpanded ? Icons.close : Icons.add),
-            label: const Text('Add'),
+            icon: Icon(_isFabExpanded ? Icons.close : Icons.build),
+            label: const Text('Manage'),
           ),
         ],
       ),
@@ -99,7 +153,7 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Tap the + button to add a route',
+                    'Tap the Manage button to add a route',
                     style: TextStyle(
                       fontSize: 14,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -316,6 +370,35 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _recomputeEtaLegs() async {
+    setState(() => _isRecomputingEta = true);
+    final result = await _firestoreService.recomputeAllRouteLegDistances();
+
+    if (!mounted) return;
+
+    if (result == null) {
+      await context.read<RouteProvider>().fetchRoutes();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ETA data recomputed successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() => _isRecomputingEta = false);
+    }
   }
 
   Future<void> _showAddBusesToRouteDialog(BusRoute route) async {

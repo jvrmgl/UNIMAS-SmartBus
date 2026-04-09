@@ -153,69 +153,77 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                 // Occupancy Display
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                  child: Consumer<RouteProvider>(
+                    builder: (context, routeProvider, _) {
+                      final arrivalText = _getArrivalEtaText(
+                        bus: bus,
+                        routeProvider: routeProvider,
+                      );
+
+                      return Column(
                         children: [
-                          Text(
-                            '${bus.currentOccupancy}',
-                            style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: bus.isNearCapacity() ? Colors.orange.shade700 : Colors.green.shade700,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${bus.currentOccupancy}',
+                                style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: bus.isNearCapacity() ? Colors.orange.shade700 : Colors.green.shade700,
+                                ),
+                              ),
+                              Text(
+                                ' / ${bus.capacity}',
+                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.grey.shade400
+                                      : Colors.grey.shade700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
+                          const SizedBox(height: 8),
                           Text(
-                            ' / ${bus.capacity}',
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              color: Theme.of(context).brightness == Brightness.dark 
+                            'Passengers',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Theme.of(context).brightness == Brightness.dark
                                   ? Colors.grey.shade400
                                   : Colors.grey.shade700,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Occupancy Progress Bar
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: LinearProgressIndicator(
+                              value: bus.getOccupancyPercentage() / 100,
+                              minHeight: 20,
+                              backgroundColor: Colors.grey.shade200,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                bus.isNearCapacity() ? Colors.orange : Colors.green,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            arrivalText,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primaryColor,
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Passengers',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).brightness == Brightness.dark 
-                              ? Colors.grey.shade400
-                              : Colors.grey.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Occupancy Progress Bar
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: LinearProgressIndicator(
-                          value: bus.getOccupancyPercentage() / 100,
-                          minHeight: 20,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            bus.isNearCapacity() ? Colors.orange : Colors.green,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${bus.getOccupancyPercentage().toStringAsFixed(1)}% Full',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).brightness == Brightness.dark 
-                              ? Colors.white
-                              : Colors.grey.shade800,
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
 
                 // Tap In/Out Buttons
                 Padding(
@@ -293,6 +301,8 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                   ),
                 ),
 
+                const SizedBox(height: 24),
+
                 if (!bus.isActive)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
@@ -318,22 +328,11 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                     ),
                   ),
 
-                const SizedBox(height: 32),
-
-                // Bus Details Cards
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Bus Details',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
                       Consumer<RouteProvider>(
                         builder: (context, routeProvider, _) {
                           BusRoute? route;
@@ -670,5 +669,156 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
   
   double _degreesToRadians(double degrees) {
     return degrees * (3.14159265359 / 180);
+  }
+
+  String _getArrivalEtaText({
+    required Bus bus,
+    required RouteProvider routeProvider,
+  }) {
+    if (!bus.isActive || bus.assignedRoute == null) {
+      return 'Arrival ETA unavailable';
+    }
+
+    BusRoute? route;
+    try {
+      route = routeProvider.routes.firstWhere(
+        (r) => r.routeId == bus.assignedRoute,
+      );
+    } catch (_) {
+      route = null;
+    }
+    if (route == null) return 'Arrival ETA unavailable';
+
+    final stops = route.stopIds
+        .map((stopId) {
+          try {
+            return routeProvider.busStops.firstWhere((s) => s.stopId == stopId);
+          } catch (_) {
+            return null;
+          }
+        })
+        .where((stop) => stop != null)
+        .cast<BusStop>()
+        .toList();
+
+    if (stops.isEmpty) return 'Arrival ETA unavailable';
+    final legDistances = routeProvider.getRouteLegDistances(route.routeId);
+
+    int? bestEtaMinutes;
+    BusStop? bestStop;
+
+    for (int i = 0; i < stops.length; i++) {
+      final etaMinutes = _estimateRouteStopEtaMinutes(
+        bus: bus,
+        orderedStops: stops,
+        targetIndex: i,
+        legDistancesMeters: legDistances,
+      );
+      if (etaMinutes == null) continue;
+      if (bestEtaMinutes == null || etaMinutes < bestEtaMinutes) {
+        bestEtaMinutes = etaMinutes;
+        bestStop = stops[i];
+      }
+    }
+
+    if (bestStop == null || bestEtaMinutes == null) {
+      return 'Arrival ETA unavailable';
+    }
+
+    return 'Arriving ${bestStop.stopName} in $bestEtaMinutes min';
+  }
+
+  int? _estimateRouteStopEtaMinutes({
+    required Bus bus,
+    required List<BusStop> orderedStops,
+    required int targetIndex,
+    List<double>? legDistancesMeters,
+  }) {
+    if (orderedStops.isEmpty) return null;
+
+    final currentIndex = _nearestRouteStopIndex(bus, orderedStops);
+    final directToCurrentMeters = Geolocator.distanceBetween(
+      bus.latitude,
+      bus.longitude,
+      orderedStops[currentIndex].latitude,
+      orderedStops[currentIndex].longitude,
+    );
+
+    final routeMeters = _routePathDistanceMeters(
+      orderedStops,
+      currentIndex,
+      targetIndex,
+      legDistancesMeters,
+    );
+
+    final totalMeters = targetIndex == currentIndex
+        ? Geolocator.distanceBetween(
+            bus.latitude,
+            bus.longitude,
+            orderedStops[targetIndex].latitude,
+            orderedStops[targetIndex].longitude,
+          )
+        : directToCurrentMeters + routeMeters;
+
+    return _estimateEtaMinutes(totalMeters);
+  }
+
+  int _nearestRouteStopIndex(Bus bus, List<BusStop> orderedStops) {
+    int nearestIndex = 0;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < orderedStops.length; i++) {
+      final distance = Geolocator.distanceBetween(
+        bus.latitude,
+        bus.longitude,
+        orderedStops[i].latitude,
+        orderedStops[i].longitude,
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestIndex = i;
+      }
+    }
+
+    return nearestIndex;
+  }
+
+  double _routePathDistanceMeters(
+    List<BusStop> orderedStops,
+    int fromIndex,
+    int toIndex,
+    List<double>? legDistancesMeters,
+  ) {
+    if (orderedStops.isEmpty || fromIndex == toIndex) return 0;
+
+    double totalMeters = 0;
+    int currentIndex = fromIndex;
+
+    while (currentIndex != toIndex) {
+      final nextIndex = (currentIndex + 1) % orderedStops.length;
+      final canUseLegDistance =
+          legDistancesMeters != null &&
+          legDistancesMeters.isNotEmpty &&
+          currentIndex < legDistancesMeters.length;
+      if (canUseLegDistance) {
+        totalMeters += legDistancesMeters[currentIndex];
+      } else {
+        totalMeters += Geolocator.distanceBetween(
+          orderedStops[currentIndex].latitude,
+          orderedStops[currentIndex].longitude,
+          orderedStops[nextIndex].latitude,
+          orderedStops[nextIndex].longitude,
+        );
+      }
+      currentIndex = nextIndex;
+    }
+
+    return totalMeters;
+  }
+
+  int _estimateEtaMinutes(double distanceMeters) {
+    const estimatedSpeedKmH = 25.0;
+    final eta = ((distanceMeters / 1000) / estimatedSpeedKmH * 60).ceil();
+    return eta <= 0 ? 1 : eta;
   }
 }

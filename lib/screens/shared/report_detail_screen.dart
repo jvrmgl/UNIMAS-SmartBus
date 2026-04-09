@@ -30,6 +30,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   late ReportStatus _selectedStatus;
   late Report _currentReport;
   StreamSubscription<Report?>? _reportSubscription;
+  String? _currentSenderId;
 
   @override
   void initState() {
@@ -39,6 +40,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     if (_currentReport.adminNotes != null) {
       _adminNotesController.text = _currentReport.adminNotes!;
     }
+    _initializeCurrentSenderId();
     _reportSubscription = _firestoreService
         .getReportStream(widget.report.reportId)
         .listen((liveReport) {
@@ -53,6 +55,15 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         });
       }
     });
+  }
+
+  Future<void> _initializeCurrentSenderId() async {
+    final senderId = await _getSenderId();
+    if (mounted) {
+      setState(() {
+        _currentSenderId = senderId;
+      });
+    }
   }
 
   @override
@@ -424,39 +435,141 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                 }
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: messages.length,
+                  itemCount: messages.length * 2 - 1, // Account for date separators
                   itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final isAdmin =
-                        message.senderType == ReportMessageSender.admin;
-                    return Align(
-                      alignment: isAdmin
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        constraints: BoxConstraints(
-                          maxWidth:
-                              MediaQuery.of(context).size.width * 0.75,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isAdmin
-                              ? Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .secondaryContainer,
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(12),
-                            topRight: const Radius.circular(12),
-                            bottomLeft: Radius.circular(isAdmin ? 12 : 2),
-                            bottomRight: Radius.circular(isAdmin ? 2 : 12),
+                    // Handle date separators
+                    if (index % 2 == 1) {
+                      final messageIndex = (index - 1) ~/ 2;
+                      final currentMessage = messages[messageIndex];
+                      final nextMessage = messages[messageIndex + 1];
+                      
+                      if (!_isSameDay(currentMessage.createdAt, nextMessage.createdAt)) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _formatDateSeparator(nextMessage.createdAt),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+
+                    final messageIndex = index ~/ 2;
+                    final message = messages[messageIndex];
+                    final isSentByCurrentUser =
+                        _currentSenderId != null && message.senderId == _currentSenderId;
+                    
+                    return Column(
+                      children: [
+                        if (messageIndex == 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _formatDateSeparator(message.createdAt),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Align(
+                          alignment: isSentByCurrentUser
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Column(
+                            crossAxisAlignment: isSentByCurrentUser
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 4),
+                                padding: const EdgeInsets.all(12),
+                                constraints: BoxConstraints(
+                                  maxWidth:
+                                      MediaQuery.of(context).size.width * 0.75,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSentByCurrentUser
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .secondaryContainer,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(12),
+                                    topRight: const Radius.circular(12),
+                                    bottomLeft:
+                                        Radius.circular(isSentByCurrentUser ? 12 : 2),
+                                    bottomRight:
+                                        Radius.circular(isSentByCurrentUser ? 2 : 12),
+                                  ),
+                                ),
+                                child: Text(message.message),
+                              ),
+                              Padding(
+                                padding: isSentByCurrentUser
+                                    ? const EdgeInsets.only(right: 4)
+                                    : const EdgeInsets.only(left: 4),
+                                child: Text(
+                                  _formatTime(message.createdAt),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Text(message.message),
-                      ),
+                        const SizedBox(height: 12),
+                      ],
                     );
                   },
                 );
@@ -541,6 +654,47 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
 
   String _formatDate(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+
+  String _formatDateSeparator(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final messageDate = DateTime(dt.year, dt.month, dt.day);
+
+    if (messageDate == today) {
+      return 'Today';
+    } else if (messageDate == yesterday) {
+      return 'Yesterday';
+    } else {
+      final monthNames = [
+        '',
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December'
+      ];
+      return '${monthNames[dt.month]} ${dt.day}';
+    }
+  }
+
+  bool _isSameDay(DateTime d1, DateTime d2) {
+    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
+  }
 
   Widget _metaChip(BuildContext context, IconData icon, String label) {
     return Row(

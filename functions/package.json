@@ -7,11 +7,12 @@
   "main": "index.js",
   "scripts": {
     "migrate:reports:dry": "node scripts/backfill_reporter_uid_cli.js --project unimas-smartbus --dryRun true --limit 200",
-    "migrate:reports:live": "node scripts/backfill_reporter_uid_cli.js --project unimas-smartbus --dryRun false --limit 200"
+    "migrate:reports:live": "node scripts/backfill_reporter_uid_cli.js --project unimas-smartbus --dryRun false --limit 200",
+    "eta:recompute:all": "node scripts/recompute_route_legs.js --project unimas-smartbus"
   },
   "dependencies": {
     "firebase": "^12.0.0",
     "firebase-admin": "^13.7.0",
-    "firebase-functions": "^7.0.6"
+    "firebase-functions": "^7.2.5"
   }
 }

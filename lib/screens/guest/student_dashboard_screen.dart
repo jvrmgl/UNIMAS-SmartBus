@@ -12,6 +12,7 @@ import '../../providers/dashboard_nav_provider.dart';
 import '../../constants/app_theme.dart';
 import '../../models/bus_model.dart';
 import '../../models/bus_stop_model.dart';
+import '../../models/route_model.dart';
 import '../../models/schedule_image_model.dart';
 import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
@@ -826,6 +827,55 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                                 fontWeight: FontWeight.bold)),
                         subtitle: Text(
                             '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
+                        trailing: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minWidth: 84,
+                            maxWidth: 108,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                _getStopBusNumber(
+                                  stop: entry.stop,
+                                  buses: busProvider.buses,
+                                  routes: routeProvider.routes,
+                                  routeProvider: routeProvider,
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Colors.green.shade700,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _getStopEtaMinutes(
+                                  stop: entry.stop,
+                                  buses: busProvider.buses,
+                                  routes: routeProvider.routes,
+                                  routeProvider: routeProvider,
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(
+                                      color: Colors.green.shade700,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       // Card actions row
                       Padding(
@@ -1076,6 +1126,213 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
     final latDiff = lat1 - lat2;
     final lonDiff = lon1 - lon2;
     return (latDiff * latDiff + lonDiff * lonDiff);
+  }
+
+  String _getStopBusNumber({
+    required BusStop stop,
+    required List<Bus> buses,
+    required List<BusRoute> routes,
+    required RouteProvider routeProvider,
+  }) {
+    Bus? bestBus;
+    int? bestEtaMinutes;
+
+    for (final bus in buses) {
+      if (!bus.isActive || bus.assignedRoute == null) continue;
+
+      BusRoute? route;
+      try {
+        route = routes.firstWhere((r) => r.routeId == bus.assignedRoute);
+      } catch (_) {
+        route = null;
+      }
+      if (route == null || !route.stopIds.contains(stop.stopId)) continue;
+
+      final orderedStops = _orderedStopsForRoute(route, routeProvider);
+      final targetIndex = orderedStops.indexWhere(
+        (routeStop) => routeStop.stopId == stop.stopId,
+      );
+      if (targetIndex == -1) continue;
+      final legDistances = routeProvider.getRouteLegDistances(route.routeId);
+
+      final etaMinutes = _estimateRouteStopEtaMinutes(
+        bus: bus,
+        orderedStops: orderedStops,
+        targetIndex: targetIndex,
+        legDistancesMeters: legDistances,
+      );
+      if (etaMinutes == null) continue;
+
+      if (bestEtaMinutes == null || etaMinutes < bestEtaMinutes) {
+        bestEtaMinutes = etaMinutes;
+        bestBus = bus;
+      }
+    }
+
+    if (bestBus == null) {
+      return 'No active bus';
+    }
+
+    return 'Bus ${bestBus.busNumber}';
+  }
+
+  String _getStopEtaMinutes({
+    required BusStop stop,
+    required List<Bus> buses,
+    required List<BusRoute> routes,
+    required RouteProvider routeProvider,
+  }) {
+    int? bestEtaMinutes;
+
+    for (final bus in buses) {
+      if (!bus.isActive || bus.assignedRoute == null) continue;
+
+      BusRoute? route;
+      try {
+        route = routes.firstWhere((r) => r.routeId == bus.assignedRoute);
+      } catch (_) {
+        route = null;
+      }
+      if (route == null || !route.stopIds.contains(stop.stopId)) continue;
+
+      final orderedStops = _orderedStopsForRoute(route, routeProvider);
+      final targetIndex = orderedStops.indexWhere(
+        (routeStop) => routeStop.stopId == stop.stopId,
+      );
+      if (targetIndex == -1) continue;
+      final legDistances = routeProvider.getRouteLegDistances(route.routeId);
+
+      final etaMinutes = _estimateRouteStopEtaMinutes(
+        bus: bus,
+        orderedStops: orderedStops,
+        targetIndex: targetIndex,
+        legDistancesMeters: legDistances,
+      );
+      if (etaMinutes == null) continue;
+
+      if (bestEtaMinutes == null || etaMinutes < bestEtaMinutes) {
+        bestEtaMinutes = etaMinutes;
+      }
+    }
+
+    if (bestEtaMinutes == null) {
+      return '--';
+    }
+
+    return '$bestEtaMinutes min';
+  }
+
+  List<BusStop> _orderedStopsForRoute(
+    BusRoute route,
+    RouteProvider routeProvider,
+  ) {
+    return route.stopIds
+        .map((stopId) {
+          try {
+            return routeProvider.busStops.firstWhere(
+                  (stop) => stop.stopId == stopId,
+                );
+          } catch (_) {
+            return null;
+          }
+        })
+        .where((stop) => stop != null)
+        .cast<BusStop>()
+        .toList();
+  }
+
+  int? _estimateRouteStopEtaMinutes({
+    required Bus bus,
+    required List<BusStop> orderedStops,
+    required int targetIndex,
+    List<double>? legDistancesMeters,
+  }) {
+    if (orderedStops.isEmpty) return null;
+
+    final currentIndex = _nearestRouteStopIndex(bus, orderedStops);
+    final directToCurrentMeters = Geolocator.distanceBetween(
+      bus.latitude,
+      bus.longitude,
+      orderedStops[currentIndex].latitude,
+      orderedStops[currentIndex].longitude,
+    );
+
+    final routeMeters = _routePathDistanceMeters(
+      orderedStops,
+      currentIndex,
+      targetIndex,
+      legDistancesMeters,
+    );
+
+    final totalMeters = targetIndex == currentIndex
+        ? Geolocator.distanceBetween(
+            bus.latitude,
+            bus.longitude,
+            orderedStops[targetIndex].latitude,
+            orderedStops[targetIndex].longitude,
+          )
+        : directToCurrentMeters + routeMeters;
+
+    return _estimateEtaMinutes(totalMeters);
+  }
+
+  int _nearestRouteStopIndex(Bus bus, List<BusStop> orderedStops) {
+    int nearestIndex = 0;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < orderedStops.length; i++) {
+      final distance = Geolocator.distanceBetween(
+        bus.latitude,
+        bus.longitude,
+        orderedStops[i].latitude,
+        orderedStops[i].longitude,
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestIndex = i;
+      }
+    }
+
+    return nearestIndex;
+  }
+
+  double _routePathDistanceMeters(
+    List<BusStop> orderedStops,
+    int fromIndex,
+    int toIndex,
+    List<double>? legDistancesMeters,
+  ) {
+    if (orderedStops.isEmpty || fromIndex == toIndex) return 0;
+
+    double totalMeters = 0;
+    int currentIndex = fromIndex;
+
+    while (currentIndex != toIndex) {
+      final nextIndex = (currentIndex + 1) % orderedStops.length;
+      final canUseLegDistance =
+          legDistancesMeters != null &&
+          legDistancesMeters.isNotEmpty &&
+          currentIndex < legDistancesMeters.length;
+      if (canUseLegDistance) {
+        totalMeters += legDistancesMeters[currentIndex];
+      } else {
+        totalMeters += Geolocator.distanceBetween(
+          orderedStops[currentIndex].latitude,
+          orderedStops[currentIndex].longitude,
+          orderedStops[nextIndex].latitude,
+          orderedStops[nextIndex].longitude,
+        );
+      }
+      currentIndex = nextIndex;
+    }
+
+    return totalMeters;
+  }
+
+  int _estimateEtaMinutes(double distanceMeters) {
+    const estimatedSpeedKmH = 25.0;
+    final eta = ((distanceMeters / 1000) / estimatedSpeedKmH * 60).ceil();
+    return eta <= 0 ? 1 : eta;
   }
 
   Future<void> _guideMeThere(BusStop stop) async {

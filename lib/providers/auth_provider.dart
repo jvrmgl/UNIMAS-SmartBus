@@ -25,6 +25,16 @@ class AuthProvider extends ChangeNotifier {
     _initializeAuth();
   }
 
+  Future<User?> _loadUserProfileWithRetry(String uid) async {
+    User? profile;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      profile = await _firestoreService.getUserData(uid);
+      if (profile != null) break;
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    return profile;
+  }
+
   void _initializeAuth() {
     // Listen to Firebase auth state changes.
     // _isInitialized becomes true only after the first event is fully
@@ -43,7 +53,17 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
 
-      _currentUser = await _firestoreService.getUserData(firebaseUser.uid);
+      final fetchedProfile = await _loadUserProfileWithRetry(firebaseUser.uid);
+      if (fetchedProfile != null) {
+        _currentUser = fetchedProfile;
+        _error = null;
+      } else {
+        // Avoid clobbering an already loaded profile for the same user when
+        // Firestore briefly fails during auth-state propagation.
+        if (_currentUser?.uid != firebaseUser.uid) {
+          _currentUser = null;
+        }
+      }
       _isInitialized = true;
       notifyListeners();
     });
@@ -86,19 +106,42 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
-    final result = await _authService.signIn(
-      email: email,
-      password: password,
-    );
+    try {
+      final result = await _authService.signIn(
+        email: email,
+        password: password,
+      );
 
-    _isLoading = false;
-    if (result != null) {
-      _error = result;
-      notifyListeners();
+      if (result != null) {
+        _error = result;
+        return false;
+      }
+
+      final signedInUser = _authService.currentUser;
+      if (signedInUser == null) {
+        _error = 'Sign-in succeeded, but no authenticated session was found.';
+        return false;
+      }
+
+      // Load profile with short retries to handle transient Firestore/network lag.
+      final profile = await _loadUserProfileWithRetry(signedInUser.uid);
+
+      if (profile == null) {
+        _error =
+            'Signed in, but unable to load your account profile. Check your internet connection and ensure this account exists in users collection.';
+        return false;
+      }
+
+      _firebaseUser = signedInUser;
+      _currentUser = profile;
+      return true;
+    } catch (e) {
+      _error = 'Sign-in failed: $e';
       return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    notifyListeners();
-    return true;
   }
 
   Future<void> signOut() async {

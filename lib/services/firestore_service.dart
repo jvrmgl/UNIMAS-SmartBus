@@ -300,6 +300,17 @@ class FirestoreService {
     }
   }
 
+  // Trigger backend precompute for all route leg distances.
+  Future<String?> recomputeAllRouteLegDistances() async {
+    try {
+      final callable = _functions.httpsCallable('recomputeAllRouteLegDistances');
+      await callable.call({});
+      return null;
+    } catch (e) {
+      return 'Error recomputing route leg distances: $e';
+    }
+  }
+
   // Delete route and unassign from buses
   Future<String?> deleteRoute(String routeId) async {
     try {
@@ -463,9 +474,11 @@ class FirestoreService {
         .where('reporterUid', isEqualTo: reporterUid)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
+      final reports = snapshot.docs
           .map((doc) => Report.fromMap(doc.data()))
           .toList();
+      reports.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return reports;
     });
   }
 
@@ -489,7 +502,11 @@ class FirestoreService {
 
   // Stream all reports
   Stream<List<Report>> getReportsStream() {
-    return _firestore.collection('reports').snapshots().map((snapshot) {
+    return _firestore
+        .collection('reports')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
       return snapshot.docs
           .map((doc) => Report.fromMap(doc.data()))
           .toList();

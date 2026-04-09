@@ -18,6 +18,7 @@ class BusRoute {
   final String routeName;
   final String routeCode;
   final List<String> stopIds; // List of bus stop IDs in order
+  final List<double>? legDistancesMeters; // Precomputed route legs in stop order
   final DateTime createdAt;
   final bool isActive;
   final String description;
@@ -27,6 +28,7 @@ class BusRoute {
     required this.routeName,
     required this.routeCode,
     required this.stopIds,
+    this.legDistancesMeters,
     required this.createdAt,
     required this.isActive,
     required this.description,
@@ -38,6 +40,7 @@ class BusRoute {
       'routeName': routeName,
       'routeCode': routeCode,
       'stopIds': stopIds,
+      if (legDistancesMeters != null) 'legDistancesMeters': legDistancesMeters,
       'createdAt': createdAt.toIso8601String(),
       'isActive': isActive,
       'description': description,
@@ -50,6 +53,9 @@ class BusRoute {
       routeName: map['routeName'] as String,
       routeCode: map['routeCode'] as String,
       stopIds: List<String>.from(map['stopIds'] as List? ?? []),
+      legDistancesMeters: (map['legDistancesMeters'] as List?)
+          ?.map((v) => (v as num).toDouble())
+          .toList(),
       createdAt: _parseDateTime(map['createdAt']),
       isActive: map['isActive'] as bool? ?? true,
       description: map['description'] as String? ?? '',
@@ -61,6 +67,7 @@ class BusRoute {
     String? routeName,
     String? routeCode,
     List<String>? stopIds,
+    List<double>? legDistancesMeters,
     DateTime? createdAt,
     bool? isActive,
     String? description,
@@ -70,6 +77,7 @@ class BusRoute {
       routeName: routeName ?? this.routeName,
       routeCode: routeCode ?? this.routeCode,
       stopIds: stopIds ?? this.stopIds,
+      legDistancesMeters: legDistancesMeters ?? this.legDistancesMeters,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
       description: description ?? this.description,

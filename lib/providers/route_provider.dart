@@ -14,12 +14,15 @@ class RouteProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   StreamSubscription<List<BusStop>>? _busStopsSubscription;
+  Map<String, List<double>> _routeLegDistanceMeters = {};
 
   List<BusRoute> get routes => _routes;
   List<BusStop> get busStops => _busStops;
   BusRoute? get selectedRoute => _selectedRoute;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  List<double>? getRouteLegDistances(String routeId) =>
+      _routeLegDistanceMeters[routeId];
 
   Future<void> fetchRoutes() async {
     _isLoading = true;
@@ -28,6 +31,7 @@ class RouteProvider extends ChangeNotifier {
 
     try {
       _routes = await _firestoreService.getRoutes();
+      _syncRouteLegDistancesFromRoutes();
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -41,6 +45,9 @@ class RouteProvider extends ChangeNotifier {
     try {
       final route = await _firestoreService.getRoute(routeId);
       _selectedRoute = route;
+      if (route != null) {
+        _routeLegDistanceMeters[route.routeId] = route.legDistancesMeters ?? [];
+      }
       notifyListeners();
       return route;
     } catch (e) {
@@ -123,6 +130,12 @@ class RouteProvider extends ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  void _syncRouteLegDistancesFromRoutes() {
+    _routeLegDistanceMeters = {
+      for (final route in _routes) route.routeId: route.legDistancesMeters ?? const []
+    };
   }
 
   @override

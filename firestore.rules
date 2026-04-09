@@ -99,7 +99,12 @@ service cloud.firestore {
     }
 
     match /reports/{reportId} {
-      allow read: if isAdmin() || isReportOwner(reportId);
+      // For report documents themselves, use resource.data so owner queries
+      // (e.g. where reporterUid == current uid) are authorized correctly.
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.reporterUid == request.auth.uid
+      );
       allow create: if isSignedIn() &&
         request.resource.data.reporterUid == request.auth.uid;
       allow update, delete: if isAdmin();

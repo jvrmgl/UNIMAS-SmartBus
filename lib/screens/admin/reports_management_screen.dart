@@ -111,7 +111,29 @@ class _ReportsManagementScreenState extends State<ReportsManagementScreen> {
                                     .last
                                     .toUpperCase(),
                               ),
-                              subtitle: Text(report.description),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    report.description,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _formatDateTime(report.createdAt),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ),
                               trailing: Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 6),
@@ -170,6 +192,16 @@ class _ReportsManagementScreenState extends State<ReportsManagementScreen> {
       case ReportStatus.rejected:
         return Colors.red;
     }
+  }
+
+  String _formatDateTime(DateTime dt) {
+    final day = dt.day.toString().padLeft(2, '0');
+    final month = dt.month.toString().padLeft(2, '0');
+    final year = dt.year;
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$day/$month/$year $hour:$minute $period';
   }
 
   Widget _statusChip(ReportStatus? status, String label, Color color) {

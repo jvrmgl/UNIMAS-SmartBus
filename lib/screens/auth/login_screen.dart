@@ -77,6 +77,8 @@ class _LoginScreenState extends State<LoginScreen>
             Navigator.of(context).pushReplacementNamed('/driver');
           } else if (userRole == UserRole.admin) {
             Navigator.of(context).pushReplacementNamed('/admin');
+          } else {
+            _showErrorDialog('Your account role is not recognized. Please contact admin.');
           }
         } else {
           _showErrorDialog('Failed to load user data');

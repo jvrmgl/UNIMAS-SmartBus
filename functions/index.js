@@ -613,3 +613,218 @@ exports.backfillReportReporterUid = functions
       nextCursor,
     };
   });
+
+// ── 6. Route leg distance precompute for ETA cost control ────────────────────
+
+function _sameStopIds(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (String(a[i]) !== String(b[i])) return false;
+  }
+  return true;
+}
+
+function _fallbackLegMeters(orderedStops) {
+  const meters = [];
+  for (let i = 0; i < orderedStops.length - 1; i += 1) {
+    const km = haversineKm(
+      orderedStops[i].latitude,
+      orderedStops[i].longitude,
+      orderedStops[i + 1].latitude,
+      orderedStops[i + 1].longitude
+    );
+    meters.push(Math.round(km * 1000));
+  }
+  return meters;
+}
+
+async function _fetchDirectionsLegMeters(orderedStops) {
+  const key = process.env.GOOGLE_MAPS_API_KEY || '';
+  if (!key || orderedStops.length < 2) {
+    return null;
+  }
+
+  const origin = `${orderedStops[0].latitude},${orderedStops[0].longitude}`;
+  const destination =
+    `${orderedStops[orderedStops.length - 1].latitude},${orderedStops[orderedStops.length - 1].longitude}`;
+  const waypointList = orderedStops.length > 2
+    ? orderedStops
+        .slice(1, orderedStops.length - 1)
+        .map((s) => `${s.latitude},${s.longitude}`)
+        .join('|')
+    : null;
+
+  const url = new URL('https://maps.googleapis.com/maps/api/directions/json');
+  url.searchParams.set('origin', origin);
+  url.searchParams.set('destination', destination);
+  url.searchParams.set('mode', 'driving');
+  url.searchParams.set('key', key);
+  if (waypointList) {
+    url.searchParams.set('waypoints', `optimize:false|${waypointList}`);
+  }
+
+  const res = await fetch(url, { method: 'GET' });
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  if (data.status !== 'OK' || !Array.isArray(data.routes) || data.routes.length === 0) {
+    return null;
+  }
+
+  const legs = data.routes[0]?.legs;
+  if (!Array.isArray(legs) || legs.length !== orderedStops.length - 1) {
+    return null;
+  }
+
+  return legs.map((leg) => Number(leg?.distance?.value || 0));
+}
+
+async function recomputeRouteLegDistances(routeId) {
+  const routeRef = admin.firestore().collection('routes').doc(routeId);
+  const routeDoc = await routeRef.get();
+  if (!routeDoc.exists) return;
+
+  const route = routeDoc.data();
+  const stopIds = Array.isArray(route?.stopIds) ? route.stopIds : [];
+
+  if (stopIds.length < 2) {
+    await routeRef.update({
+      legDistancesMeters: [],
+      legDistanceSource: 'none',
+      legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      legDistanceStopIds: stopIds,
+    });
+    return;
+  }
+
+  const stopDocs = await Promise.all(
+    stopIds.map((stopId) => admin.firestore().collection('bus_stops').doc(String(stopId)).get())
+  );
+
+  const orderedStops = [];
+  for (let i = 0; i < stopDocs.length; i += 1) {
+    const doc = stopDocs[i];
+    if (!doc.exists) continue;
+    const s = doc.data();
+    const lat = Number(s?.latitude);
+    const lng = Number(s?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    orderedStops.push({
+      stopId: stopIds[i],
+      latitude: lat,
+      longitude: lng,
+    });
+  }
+
+  if (orderedStops.length < 2) {
+    await routeRef.update({
+      legDistancesMeters: [],
+      legDistanceSource: 'none',
+      legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      legDistanceStopIds: stopIds,
+    });
+    return;
+  }
+
+  let legDistancesMeters = null;
+  let source = 'haversine';
+  try {
+    legDistancesMeters = await _fetchDirectionsLegMeters(orderedStops);
+    if (Array.isArray(legDistancesMeters) && legDistancesMeters.length > 0) {
+      source = 'directions';
+    }
+  } catch (_) {
+    legDistancesMeters = null;
+  }
+
+  if (!Array.isArray(legDistancesMeters) || legDistancesMeters.length === 0) {
+    legDistancesMeters = _fallbackLegMeters(orderedStops);
+    source = 'haversine';
+  }
+
+  await routeRef.update({
+    legDistancesMeters,
+    legDistanceSource: source,
+    legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    legDistanceStopIds: orderedStops.map((s) => s.stopId),
+  });
+}
+
+exports.onRouteStopsChangedRecomputeLegs = functions
+  .region('asia-southeast1')
+  .firestore.document('routes/{routeId}')
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) return null;
+
+    const before = change.before.exists ? change.before.data() : null;
+    const after = change.after.data();
+    const beforeStopIds = Array.isArray(before?.stopIds) ? before.stopIds : [];
+    const afterStopIds = Array.isArray(after?.stopIds) ? after.stopIds : [];
+
+    if (change.before.exists && _sameStopIds(beforeStopIds, afterStopIds)) {
+      return null;
+    }
+
+    await recomputeRouteLegDistances(context.params.routeId);
+    return null;
+  });
+
+exports.onBusStopChangedRecomputeLegs = functions
+  .region('asia-southeast1')
+  .firestore.document('bus_stops/{stopId}')
+  .onWrite(async (change, context) => {
+    const stopId = context.params.stopId;
+    if (!stopId) return null;
+
+    const routesSnap = await admin
+      .firestore()
+      .collection('routes')
+      .where('stopIds', 'array-contains', stopId)
+      .get();
+
+    if (routesSnap.empty) return null;
+
+    for (const doc of routesSnap.docs) {
+      await recomputeRouteLegDistances(doc.id);
+    }
+
+    return null;
+  });
+
+exports.recomputeAllRouteLegDistances = functions
+  .region('asia-southeast1')
+  .https.onCall(async (_data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+    enforceRateLimit(context.auth.uid, { maxCalls: 2, windowMs: 60_000 });
+
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can recompute route legs.'
+      );
+    }
+
+    const routesSnap = await admin.firestore().collection('routes').get();
+    let processed = 0;
+    for (const doc of routesSnap.docs) {
+      await recomputeRouteLegDistances(doc.id);
+      processed += 1;
+    }
+
+    return { success: true, processed };
+  });
+
+

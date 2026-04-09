@@ -21,6 +21,7 @@ class _ReportScreenState extends State<ReportScreen>
   final FirestoreService _firestoreService = FirestoreService();
   final DeviceService _deviceService = DeviceService();
   final StorageService _storageService = StorageService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final ImagePicker _imagePicker = ImagePicker();
   late TabController _tabController;
 
@@ -33,12 +34,33 @@ class _ReportScreenState extends State<ReportScreen>
   bool _isSubmitting = false;
   bool _isUploading = false;
   List<XFile> _selectedImages = [];
+  String? _reporterUid;
+  bool _isResolvingReporterUid = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     // DeviceService is now a singleton and auto-initializes when needed
+    _initializeReporterUid();
+  }
+
+  Future<void> _initializeReporterUid() async {
+    String? uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      try {
+        final credential = await _auth.signInAnonymously();
+        uid = credential.user?.uid;
+      } catch (_) {
+        uid = null;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _reporterUid = uid;
+      _isResolvingReporterUid = false;
+    });
   }
 
   @override
@@ -97,14 +119,10 @@ class _ReportScreenState extends State<ReportScreen>
   }
 
   Future<String?> _getReporterUid() async {
-    final auth = FirebaseAuth.instance;
-    if (auth.currentUser != null) return auth.currentUser!.uid;
-    try {
-      final credential = await auth.signInAnonymously();
-      return credential.user?.uid;
-    } catch (_) {
-      return null;
-    }
+    // Use a stable UID for this screen session to avoid stream/query flicker.
+    if (_reporterUid != null) return _reporterUid;
+    await _initializeReporterUid();
+    return _reporterUid;
   }
 
   Future<void> _submitReport() async {
@@ -318,50 +336,75 @@ class _ReportScreenState extends State<ReportScreen>
   }
 
   Widget _buildMyReportsTab() {
-    return FutureBuilder<String?>(
-      future: _getReporterUid(),
-      builder: (context, snapshot) {
-        final reporterUid = snapshot.data;
-        if (reporterUid == null) {
+    if (_isResolvingReporterUid) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final reporterUid = _reporterUid;
+    if (reporterUid == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Unable to initialize your user session. Please reopen this screen and try again.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+
+    return StreamBuilder<List<Report>>(
+      stream: _firestoreService.getReportsByReporterUid(reporterUid),
+      builder: (context, reportSnapshot) {
+        if (reportSnapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        return StreamBuilder<List<Report>>(
-          stream: _firestoreService.getReportsByReporterUid(reporterUid),
-          builder: (context, reportSnapshot) {
-            if (reportSnapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final reports = reportSnapshot.data ?? [];
-            if (reports.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.report_off, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No reports yet',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Submit a report from the other tab',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+        if (reportSnapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Unable to load reports. Please try again in a moment.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          );
+        }
+
+        final reports = reportSnapshot.data ?? [];
+        if (reports.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.report_off, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                const SizedBox(height: 16),
+                Text(
+                  'No reports yet',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-              );
-            }
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: reports.length,
-              itemBuilder: (context, index) {
-                final report = reports[index];
-                final statusColor = _statusColor(report.status);
-                return Card(
+                const SizedBox(height: 8),
+                Text(
+                  'Submit a report from the other tab',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: reports.length,
+          itemBuilder: (context, index) {
+            final report = reports[index];
+            final statusColor = _statusColor(report.status);
+            return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
@@ -433,6 +476,8 @@ class _ReportScreenState extends State<ReportScreen>
                             children: [
                               _infoChip(context, Icons.calendar_today,
                                   _formatDate(report.createdAt)),
+                              _infoChip(context, Icons.access_time,
+                                  _formatTime(report.createdAt)),
                               if (report.busId != null && report.busId!.isNotEmpty)
                                 _infoChip(context, Icons.directions_bus,
                                     'Bus: ${report.busId}'),
@@ -475,8 +520,6 @@ class _ReportScreenState extends State<ReportScreen>
                     ),
                   ),
                 );
-              },
-            );
           },
         );
       },
@@ -498,6 +541,13 @@ class _ReportScreenState extends State<ReportScreen>
 
   String _formatDate(DateTime dt) {
     return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
   }
 
   Widget _infoChip(BuildContext context, IconData icon, String label) {

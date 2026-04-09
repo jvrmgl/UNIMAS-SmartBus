@@ -27,6 +27,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoginExpanded = false;
   AuthProvider? _authProviderRef;
 
+  static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
   @override
   void initState() {
     super.initState();
@@ -74,26 +76,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _handleLogin() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
       _showMessage('Please fill in all fields');
       return;
     }
 
-    setState(() => _isLoading = true);
+    if (!_emailPattern.hasMatch(email)) {
+      _showMessage('Please enter a valid email address');
+      return;
+    }
 
-    final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.signIn(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
 
-    setState(() => _isLoading = false);
+    try {
+      final authProvider = context.read<AuthProvider>();
+      var didTimeout = false;
+      final success = await authProvider
+          .signIn(
+            email: email,
+            password: password,
+          )
+          .timeout(
+            const Duration(seconds: 12),
+            onTimeout: () {
+              didTimeout = true;
+              return false;
+            },
+          );
 
-    if (success) {
-      _isAwaitingRoleRouting = true;
-      _onAuthProviderChanged();
-    } else {
-      _showMessage('The information entered is incorrect');
+      if (!mounted) return;
+
+      if (success) {
+        _isAwaitingRoleRouting = true;
+        _onAuthProviderChanged();
+      } else {
+        if (didTimeout) {
+          _showMessage('Login is taking too long. Please check internet and try again.');
+        } else {
+          _showMessage(authProvider.error ?? 'Incorrect email or password.');
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage('Login failed. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -234,6 +268,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
           final themeProvider = context.watch<ThemeProvider>();
+          final isResolvingProfile =
+              authProvider.firebaseUser != null && authProvider.currentUser == null;
+
+          if (isResolvingProfile) {
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _buildNotificationSettings(isDriver: false),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Appearance'),
+                _buildThemeSetting(themeProvider),
+                const SizedBox(height: 24),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: const [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text('Finalizing sign-in...'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
           if (authProvider.isAuthenticated && authProvider.currentUser != null) {
             // User is logged in - show account info
             return ListView(

@@ -27,6 +27,25 @@ class AuthService {
   // Stream of auth state changes
   Stream<firebase_auth.User?> get authStateChanges => _auth.authStateChanges();
 
+  String _friendlySignInError(firebase_auth.FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-credential':
+      case 'wrong-password':
+      case 'user-not-found':
+        return 'Incorrect email or password.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-disabled':
+        return 'This account has been disabled. Please contact admin.';
+      case 'network-request-failed':
+        return 'Network error. Check your internet and try again.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      default:
+        return 'Unable to sign in right now. Please try again.';
+    }
+  }
+
   // Sign up with email and password
   Future<String?> signUp({
     required String email,
@@ -76,7 +95,7 @@ class AuthService {
       );
       return null; // Success
     } on firebase_auth.FirebaseAuthException catch (e) {
-      return e.message ?? 'An error occurred during sign in';
+      return _friendlySignInError(e);
     } catch (e) {
       return 'Error: ${e.toString()}';
     }
