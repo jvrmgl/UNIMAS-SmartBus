@@ -46,20 +46,48 @@ class AuthService {
     }
   }
 
+  String _friendlySignUpError(firebase_auth.FirebaseAuthException e) {
+    switch (e.code) {
+      case 'email-already-in-use':
+        return 'This email is already registered. Please sign in instead.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'weak-password':
+        return 'Password is too weak. Use at least 6 characters.';
+      case 'network-request-failed':
+        return 'Network error. Check your internet and try again.';
+      default:
+        return e.message ?? 'Unable to create account right now.';
+    }
+  }
+
   // Sign up with email and password
   Future<String?> signUp({
     required String email,
     required String password,
     required String fullName,
-    required String phoneNumber,
     required UserRole role,
   }) async {
     try {
-      // Create user in Firebase Auth
-      firebase_auth.UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      firebase_auth.UserCredential userCredential;
+      final existingUser = _auth.currentUser;
+
+      // Migration-safe path: if this device still has a legacy anonymous
+      // session, link credentials so the UID stays the same and existing data
+      // (reports/trips) remains accessible after signup.
+      if (existingUser != null && existingUser.isAnonymous) {
+        final credential = firebase_auth.EmailAuthProvider.credential(
+          email: email,
+          password: password,
+        );
+        userCredential = await existingUser.linkWithCredential(credential);
+      } else {
+        // Default path: create a new Firebase Auth user.
+        userCredential = await _auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      }
 
       final uid = userCredential.user!.uid;
 
@@ -68,7 +96,6 @@ class AuthService {
         uid: uid,
         email: email,
         fullName: fullName,
-        phoneNumber: phoneNumber,
         role: role,
         createdAt: DateTime.now(),
       );
@@ -77,7 +104,7 @@ class AuthService {
 
       return null; // Success
     } on firebase_auth.FirebaseAuthException catch (e) {
-      return e.message ?? 'An error occurred during sign up';
+      return _friendlySignUpError(e);
     } catch (e) {
       return 'Error: ${e.toString()}';
     }
@@ -101,17 +128,24 @@ class AuthService {
     }
   }
 
-  // Ensure guest users have an anonymous Firebase auth session so security
-  // rules can safely scope data access without forcing explicit login UI.
-  Future<bool> signInAnonymouslyIfNeeded() async {
-    if (_auth.currentUser != null) return true;
+  Future<String?> sendCurrentUserEmailVerification() async {
     try {
-      await _auth.signInAnonymously();
-      return true;
+      final user = _auth.currentUser;
+      if (user == null) return 'No authenticated user found.';
+      await user.sendEmailVerification();
+      return null;
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      return e.message ?? 'Unable to send verification email.';
     } catch (e) {
-      debugPrint('Anonymous sign-in failed: $e');
-      return false;
+      return 'Error: ${e.toString()}';
     }
+  }
+
+  Future<bool> reloadAndCheckEmailVerified() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    await user.reload();
+    return _auth.currentUser?.emailVerified ?? false;
   }
 
   // Sign out
@@ -137,12 +171,10 @@ class AuthService {
   Future<String?> updateUserProfile({
     required String uid,
     String? fullName,
-    String? phoneNumber,
   }) async {
     try {
       Map<String, dynamic> updateData = {};
       if (fullName != null) updateData['fullName'] = fullName;
-      if (phoneNumber != null) updateData['phoneNumber'] = phoneNumber;
 
       await _firestore.collection('users').doc(uid).update(updateData);
       return null; // Success
@@ -205,14 +237,12 @@ class AuthService {
     required String email,
     required String password,
     required String fullName,
-    required String phoneNumber,
     required UserRole role,
   }) async {
     final result = await createUserAsAdminWithResult(
       email: email,
       password: password,
       fullName: fullName,
-      phoneNumber: phoneNumber,
       role: role,
     );
     return result.error;
@@ -224,7 +254,6 @@ class AuthService {
     required String email,
     required String password,
     required String fullName,
-    required String phoneNumber,
     required UserRole role,
   }) async {
     FirebaseApp? secondaryApp;
@@ -254,7 +283,6 @@ class AuthService {
         uid: uid,
         email: email,
         fullName: fullName,
-        phoneNumber: phoneNumber,
         role: role,
         createdAt: DateTime.now(),
       );

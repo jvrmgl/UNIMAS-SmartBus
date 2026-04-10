@@ -161,7 +161,7 @@ flutter build ios --release
 
 1. **users**
    - Stores user profiles (students, drivers, admins)
-   - Fields: email, fullName, phoneNumber, role, createdAt
+   - Fields: email, normalizedEmail, fullName, role, createdAt
 
 2. **buses**
    - Stores bus information and real-time location

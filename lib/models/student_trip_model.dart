@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class StudentTrip {
   final String tripId;
   final String deviceId;
+  final String? studentUid;
   final String busId;
   final String busNumber;
   final String busRegistrationNumber;
@@ -15,6 +16,7 @@ class StudentTrip {
   StudentTrip({
     required this.tripId,
     required this.deviceId,
+    this.studentUid,
     required this.busId,
     required this.busNumber,
     required this.busRegistrationNumber,
@@ -30,6 +32,7 @@ class StudentTrip {
     return {
       'tripId': tripId,
       'deviceId': deviceId,
+      'studentUid': studentUid,
       'busId': busId,
       'busNumber': busNumber,
       'busRegistrationNumber': busRegistrationNumber,
@@ -46,6 +49,7 @@ class StudentTrip {
     return StudentTrip(
       tripId: map['tripId'] as String,
       deviceId: map['deviceId'] as String,
+      studentUid: map['studentUid'] as String?,
       busId: map['busId'] as String,
       busNumber: map['busNumber'] as String,
       busRegistrationNumber: map['busRegistrationNumber'] as String,

@@ -13,11 +13,10 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
   late TextEditingController _emailController;
-  late TextEditingController _phoneController;
   late TextEditingController _currentPasswordController;
   late TextEditingController _newPasswordController;
   late TextEditingController _confirmPasswordController;
-  
+
   bool _isLoading = false;
   bool _obscureCurrentPassword = true;
   bool _obscureNewPassword = true;
@@ -29,7 +28,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final user = context.read<AuthProvider>().currentUser;
     _nameController = TextEditingController(text: user?.fullName ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
-    _phoneController = TextEditingController(text: user?.phoneNumber ?? '');
     _currentPasswordController = TextEditingController();
     _newPasswordController = TextEditingController();
     _confirmPasswordController = TextEditingController();
@@ -39,7 +37,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _phoneController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -55,11 +52,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isLoading = true);
 
     final authProvider = context.read<AuthProvider>();
-    
-    // Update profile info (name, phone)
+
+    // Update profile info
     final success = await authProvider.updateProfile(
       fullName: _nameController.text.trim(),
-      phoneNumber: _phoneController.text.trim(),
     );
 
     setState(() => _isLoading = false);
@@ -121,7 +117,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _confirmPasswordController.clear();
       }
     } else {
-      _showMessage('Failed to change password. Check your current password.', isError: true);
+      _showMessage('Failed to change password. Check your current password.',
+          isError: true);
     }
   }
 
@@ -173,16 +170,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone Number',
-                prefixIcon: Icon(Icons.phone),
-                border: OutlineInputBorder(),
-              ),
-            ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -212,8 +199,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Text(
                 'Saving changes... If this takes more than a few seconds, your network may be unstable.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey.shade600,
-                ),
+                      color: Colors.grey.shade600,
+                    ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -237,10 +224,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 prefixIcon: const Icon(Icons.lock),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureCurrentPassword ? Icons.visibility_off : Icons.visibility,
+                    _obscureCurrentPassword
+                        ? Icons.visibility_off
+                        : Icons.visibility,
                   ),
                   onPressed: () {
-                    setState(() => _obscureCurrentPassword = !_obscureCurrentPassword);
+                    setState(() =>
+                        _obscureCurrentPassword = !_obscureCurrentPassword);
                   },
                 ),
                 border: const OutlineInputBorder(),
@@ -255,7 +245,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureNewPassword ? Icons.visibility_off : Icons.visibility,
+                    _obscureNewPassword
+                        ? Icons.visibility_off
+                        : Icons.visibility,
                   ),
                   onPressed: () {
                     setState(() => _obscureNewPassword = !_obscureNewPassword);
@@ -273,10 +265,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                    _obscureConfirmPassword
+                        ? Icons.visibility_off
+                        : Icons.visibility,
                   ),
                   onPressed: () {
-                    setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
+                    setState(() =>
+                        _obscureConfirmPassword = !_obscureConfirmPassword);
                   },
                 ),
                 border: const OutlineInputBorder(),

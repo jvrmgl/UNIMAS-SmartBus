@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:io';
 import '../../models/bus_model.dart';
 import '../../models/route_model.dart';
 import '../../models/bus_stop_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/bus_provider.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/route_provider.dart';
+import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/smart_notification_service.dart';
 import '../../constants/app_theme.dart';
@@ -25,6 +25,7 @@ class BusDetailScreen extends StatefulWidget {
 
 class _BusDetailScreenState extends State<BusDetailScreen> {
   final FirestoreService _firestoreService = FirestoreService();
+  final DeviceService _deviceService = DeviceService();
   bool _isTappedIn = false;
   bool _isUpdating = false;
   bool _isLoading = true;
@@ -39,19 +40,17 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
 
   Future<void> _initializeDeviceId() async {
     try {
-      final deviceInfo = DeviceInfoPlugin();
-      
-      if (Platform.isAndroid) {
-        final androidInfo = await deviceInfo.androidInfo;
-        _deviceId = androidInfo.id; // This is the Android ID
-        debugPrint('DEBUG: Android Device ID: $_deviceId');
-      } else if (Platform.isIOS) {
-        final iosInfo = await deviceInfo.iosInfo;
-        _deviceId = iosInfo.identifierForVendor; // Unique device ID
-        debugPrint('DEBUG: iOS Device ID: $_deviceId');
-      }
-      
+      final authProvider = context.read<AuthProvider>();
+      _deviceId = await _deviceService.getDeviceId();
+
       if (_deviceId != null) {
+        final studentUid = authProvider.firebaseUser?.uid;
+        if (studentUid != null) {
+          await _firestoreService.reconcileStudentActiveState(
+            deviceId: _deviceId!,
+            studentUid: studentUid,
+          );
+        }
         await _checkTapInStatus();
       } else {
         debugPrint('DEBUG: Could not get device ID');
@@ -67,23 +66,49 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     }
   }
 
+  Future<bool> _validateStudentDeviceBinding() async {
+    final authProvider = context.read<AuthProvider>();
+    final uid = authProvider.firebaseUser?.uid;
+
+    if (uid == null || _deviceId == null) {
+      _showMessage('Please sign in to continue.');
+      return false;
+    }
+
+    final result = await _firestoreService.ensureStudentDeviceBinding(
+      uid: uid,
+      deviceId: _deviceId!,
+      allowTransfer: false,
+    );
+
+    if (!result.isAllowed) {
+      _showMessage(
+          result.message ?? 'This account cannot be used on this device.');
+      return false;
+    }
+
+    return true;
+  }
+
   Future<void> _checkTapInStatus() async {
     if (_deviceId == null) return;
-    
+
     try {
-      final activeBusId = await _firestoreService.getDeviceActiveBusId(_deviceId!);
+      final activeBusId =
+          await _firestoreService.getDeviceActiveBusId(_deviceId!);
       debugPrint('DEBUG: Checking tap-in status');
       debugPrint('DEBUG: Active bus ID from Firestore: $activeBusId');
       debugPrint('DEBUG: Current bus ID: ${widget.bus.busId}');
       debugPrint('DEBUG: Are they equal? ${activeBusId == widget.bus.busId}');
-      
+
       if (mounted) {
         setState(() {
           _activeBusId = activeBusId;
           _isTappedIn = activeBusId == widget.bus.busId;
           _isLoading = false;
         });
-        debugPrint('DEBUG: After setState - _isTappedIn: $_isTappedIn, _isLoading: $_isLoading');
+        debugPrint(
+            'DEBUG: After setState - _isTappedIn: $_isTappedIn, _isLoading: $_isLoading');
       }
     } catch (e) {
       debugPrint('DEBUG: Error checking tap-in status: $e');
@@ -131,18 +156,22 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                       const SizedBox(height: 16),
                       Text(
                         'Bus ${bus.busNumber}',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         bus.registrationNumber,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
                       ),
                     ],
                   ),
@@ -168,31 +197,44 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                             children: [
                               Text(
                                 '${bus.currentOccupancy}',
-                                style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: bus.isNearCapacity() ? Colors.orange.shade700 : Colors.green.shade700,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .displayLarge
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: bus.isNearCapacity()
+                                          ? Colors.orange.shade700
+                                          : Colors.green.shade700,
+                                    ),
                               ),
                               Text(
                                 ' / ${bus.capacity}',
-                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  color: Theme.of(context).brightness == Brightness.dark
-                                      ? Colors.grey.shade400
-                                      : Colors.grey.shade700,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineSmall
+                                    ?.copyWith(
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.grey.shade400
+                                          : Colors.grey.shade700,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Passengers',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.grey.shade400
-                                  : Colors.grey.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey.shade400
+                                      : Colors.grey.shade700,
+                                  fontWeight: FontWeight.w500,
+                                ),
                           ),
                           const SizedBox(height: 24),
 
@@ -204,7 +246,9 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                               minHeight: 20,
                               backgroundColor: Colors.grey.shade200,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                bus.isNearCapacity() ? Colors.orange : Colors.green,
+                                bus.isNearCapacity()
+                                    ? Colors.orange
+                                    : Colors.green,
                               ),
                             ),
                           ),
@@ -212,10 +256,11 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                           Text(
                             arrivalText,
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.primaryColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.primaryColor,
+                                    ),
                           ),
                         ],
                       );
@@ -233,18 +278,25 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                       final isBusInactive = !bus.isActive;
                       final hasActiveOtherSession =
                           _activeBusId != null && _activeBusId != bus.busId;
-                      debugPrint('DEBUG: Rendering buttons - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating, _isLoading: $_isLoading');
+                      debugPrint(
+                          'DEBUG: Rendering buttons - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating, _isLoading: $_isLoading');
                       return Row(
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: _isTappedIn || _isUpdating || _isLoading || isBusInactive || hasActiveOtherSession
+                              onPressed: _isTappedIn ||
+                                      _isUpdating ||
+                                      _isLoading ||
+                                      isBusInactive ||
+                                      hasActiveOtherSession
                                   ? null
                                   : () => _handleTapIn(bus),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isBusInactive ? Colors.grey : Colors.green,
+                                backgroundColor:
+                                    isBusInactive ? Colors.grey : Colors.green,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -261,41 +313,48 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                                   : const Icon(Icons.login),
                               label: const Text(
                                 'Tap In',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: !_isTappedIn || _isUpdating || _isLoading || isBusInactive
+                              onPressed: !_isTappedIn ||
+                                      _isUpdating ||
+                                      _isLoading ||
+                                      isBusInactive
                                   ? null
                                   : () => _handleTapOut(bus),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isBusInactive ? Colors.grey : Colors.red,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    isBusInactive ? Colors.grey : Colors.red,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              icon: _isUpdating
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.logout),
+                              label: const Text(
+                                'Tap Out',
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ),
-                          icon: _isUpdating
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.logout),
-                          label: const Text(
-                            'Tap Out',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                    ],
+                        ],
                       );
                     },
                   ),
@@ -357,7 +416,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                           if (routeProvider.busStops.isNotEmpty) {
                             double minDistance = double.infinity;
                             BusStop? nearestStop;
-                            
+
                             for (var stop in routeProvider.busStops) {
                               final distance = _calculateDistance(
                                 bus.latitude,
@@ -370,16 +429,17 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                                 nearestStop = stop;
                               }
                             }
-                            
+
                             if (nearestStop != null) {
                               if (minDistance < 0.1) {
                                 locationText = 'At ${nearestStop.stopName}';
                               } else {
-                                locationText = 'Near ${nearestStop.stopName} (${minDistance.toStringAsFixed(1)}km away)';
+                                locationText =
+                                    'Near ${nearestStop.stopName} (${minDistance.toStringAsFixed(1)}km away)';
                               }
                             }
                           }
-                          
+
                           return _buildDetailCard(
                             icon: Icons.location_on,
                             title: 'Current Location',
@@ -435,16 +495,16 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
                   Text(
                     title,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey,
-                    ),
+                          color: Colors.grey,
+                        ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     value,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: valueColor,
-                    ),
+                          fontWeight: FontWeight.w500,
+                          color: valueColor,
+                        ),
                   ),
                   if (trailing != null) ...[
                     const SizedBox(height: 2),
@@ -461,25 +521,37 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
 
   Future<void> _handleTapIn(Bus bus) async {
     debugPrint('DEBUG: _handleTapIn called');
-    
+
     if (_deviceId == null) {
       _showMessage('Could not identify device');
       return;
     }
 
-    // Client-side guard so users get immediate feedback before network call.
-    if (_activeBusId != null && _activeBusId != bus.busId) {
-      _showMessage('You are already tapped into another bus. Please tap out first.');
+    final authProvider = context.read<AuthProvider>();
+    final studentUid = authProvider.firebaseUser?.uid;
+    final locationProvider = context.read<LocationProvider>();
+    if (studentUid == null) {
+      _showMessage('Please sign in to continue.');
       return;
     }
-    
+
+    final isDeviceAllowed = await _validateStudentDeviceBinding();
+    if (!isDeviceAllowed) return;
+
+    // Client-side guard so users get immediate feedback before network call.
+    if (_activeBusId != null && _activeBusId != bus.busId) {
+      _showMessage(
+          'You are already tapped into another bus. Please tap out first.');
+      return;
+    }
+
     if (bus.currentOccupancy >= bus.capacity) {
       _showMessage('Bus is at full capacity');
       return;
     }
 
     // ── Distance warning ───────────────────────────────────────────────────
-    final position = context.read<LocationProvider>().currentPosition;
+    final position = locationProvider.currentPosition;
     if (position != null) {
       final distKm = Geolocator.distanceBetween(
             position.latitude,
@@ -519,8 +591,9 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     setState(() => _isUpdating = true);
 
     // Tap in to bus (this will check for existing sessions)
-    final tapInResult = await _firestoreService.tapInToBus(_deviceId!, bus.busId);
-    
+    final tapInResult =
+        await _firestoreService.tapInToBus(_deviceId!, bus.busId);
+
     if (tapInResult != null) {
       // Error occurred
       debugPrint('DEBUG: Tap in failed: $tapInResult');
@@ -544,14 +617,15 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
 
     if (busUpdateResult == null) {
       debugPrint('DEBUG: Bus update successful');
-      
+
       // Create student trip
       debugPrint('DEBUG: Creating student trip');
       await _firestoreService.createStudentTrip(
         deviceId: _deviceId!,
         busId: bus.busId,
+        studentUid: studentUid,
       );
-      
+
       setState(() {
         _isUpdating = false;
         _activeBusId = bus.busId;
@@ -565,10 +639,11 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
       // dashboard refreshes instantly without waiting for the stream.
       if (mounted) {
         context.read<BusProvider>().updateBusInList(
-            bus.copyWith(currentOccupancy: newOccupancy),
-        );
+              bus.copyWith(currentOccupancy: newOccupancy),
+            );
       }
-      debugPrint('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
+      debugPrint(
+          'DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
       _showMessage('Tapped in successfully!');
     } else {
       debugPrint('DEBUG: Bus update failed: $busUpdateResult');
@@ -582,12 +657,22 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
 
   Future<void> _handleTapOut(Bus bus) async {
     debugPrint('DEBUG: _handleTapOut called');
-    
+
     if (_deviceId == null) {
       _showMessage('Could not identify device');
       return;
     }
-    
+
+    final authProvider = context.read<AuthProvider>();
+    final studentUid = authProvider.firebaseUser?.uid;
+    if (studentUid == null) {
+      _showMessage('Please sign in to continue.');
+      return;
+    }
+
+    final isDeviceAllowed = await _validateStudentDeviceBinding();
+    if (!isDeviceAllowed) return;
+
     debugPrint('DEBUG: Setting _isUpdating to true');
     setState(() => _isUpdating = true);
 
@@ -613,11 +698,14 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
 
       if (sessionCleared) {
         debugPrint('DEBUG: Tap out successful');
-        
+
         // Complete student trip
         debugPrint('DEBUG: Completing student trip');
-        await _firestoreService.completeStudentTrip(_deviceId!);
-        
+        await _firestoreService.completeStudentTrip(
+          _deviceId!,
+          studentUid: studentUid,
+        );
+
         setState(() {
           _isUpdating = false;
           _activeBusId = null;
@@ -627,10 +715,11 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
         // dashboard refreshes instantly without waiting for the stream.
         if (mounted) {
           context.read<BusProvider>().updateBusInList(
-            bus.copyWith(currentOccupancy: newOccupancy),
-          );
+                bus.copyWith(currentOccupancy: newOccupancy),
+              );
         }
-        debugPrint('DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
+        debugPrint(
+            'DEBUG: State updated - _isTappedIn: $_isTappedIn, _isUpdating: $_isUpdating');
         _showMessage('Tapped out successfully!');
       } else {
         debugPrint('DEBUG: Tap out session failed: $tapOutResult');
@@ -653,20 +742,23 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
     );
   }
 
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
     // Simple distance calculation using Haversine formula
     const double earthRadius = 6371; // km
     final dLat = _degreesToRadians(lat2 - lat1);
     final dLon = _degreesToRadians(lon2 - lon1);
-    
+
     final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_degreesToRadians(lat1)) * cos(_degreesToRadians(lat2)) *
-        sin(dLon / 2) * sin(dLon / 2);
-    
+        cos(_degreesToRadians(lat1)) *
+            cos(_degreesToRadians(lat2)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+
     final c = 2 * asin(sqrt(a));
     return earthRadius * c;
   }
-  
+
   double _degreesToRadians(double degrees) {
     return degrees * (3.14159265359 / 180);
   }
@@ -796,8 +888,7 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
 
     while (currentIndex != toIndex) {
       final nextIndex = (currentIndex + 1) % orderedStops.length;
-      final canUseLegDistance =
-          legDistancesMeters != null &&
+      final canUseLegDistance = legDistancesMeters != null &&
           legDistancesMeters.isNotEmpty &&
           currentIndex < legDistancesMeters.length;
       if (canUseLegDistance) {

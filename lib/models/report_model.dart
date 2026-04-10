@@ -1,11 +1,13 @@
 enum ReportStatus { pending, reviewed, resolved, rejected }
 enum ReportCategory { cleanliness, safety, delay, behavior, other }
-enum ReportMessageSender { guest, admin }
+enum ReportMessageSender { student, admin, guest }
 
 class Report {
   final String reportId;
   final String? deviceId; // Can be anonymous
   final String? reporterUid; // Firebase Auth UID (email user or anonymous)
+  final String? reporterEmail;
+  final String? reporterName;
   final String? busId;
   final String? routeId;
   final ReportCategory category;
@@ -20,6 +22,8 @@ class Report {
     required this.reportId,
     this.deviceId,
     this.reporterUid,
+    this.reporterEmail,
+    this.reporterName,
     this.busId,
     this.routeId,
     required this.category,
@@ -38,6 +42,8 @@ class Report {
       'studentId': deviceId,
       'deviceId': deviceId,
       'reporterUid': reporterUid,
+      'reporterEmail': reporterEmail,
+      'reporterName': reporterName,
       'busId': busId,
       'routeId': routeId,
       'category': category.toString().split('.').last,
@@ -56,6 +62,8 @@ class Report {
       // Prefer deviceId, fallback to legacy studentId.
       deviceId: (map['deviceId'] ?? map['studentId']) as String?,
       reporterUid: map['reporterUid'] as String?,
+      reporterEmail: map['reporterEmail'] as String?,
+      reporterName: map['reporterName'] as String?,
       busId: map['busId'] as String?,
       routeId: map['routeId'] as String?,
       category: ReportCategory.values.firstWhere(
@@ -78,6 +86,8 @@ class Report {
     String? reportId,
     String? deviceId,
     String? reporterUid,
+    String? reporterEmail,
+    String? reporterName,
     String? busId,
     String? routeId,
     ReportCategory? category,
@@ -92,6 +102,8 @@ class Report {
       reportId: reportId ?? this.reportId,
       deviceId: deviceId ?? this.deviceId,
       reporterUid: reporterUid ?? this.reporterUid,
+      reporterEmail: reporterEmail ?? this.reporterEmail,
+      reporterName: reporterName ?? this.reporterName,
       busId: busId ?? this.busId,
       routeId: routeId ?? this.routeId,
       category: category ?? this.category,
@@ -108,12 +120,16 @@ class Report {
 class ReportMessage {
   final String senderId; // deviceId for guest, uid for admin
   final ReportMessageSender senderType;
+  final String? senderEmail;
+  final String? senderName;
   final String message;
   final DateTime createdAt;
 
   ReportMessage({
     required this.senderId,
     required this.senderType,
+    this.senderEmail,
+    this.senderName,
     required this.message,
     required this.createdAt,
   });
@@ -122,6 +138,8 @@ class ReportMessage {
     return {
       'senderId': senderId,
       'senderType': senderType.toString().split('.').last,
+      'senderEmail': senderEmail,
+      'senderName': senderName,
       'message': message,
       'createdAt': createdAt.toIso8601String(),
     };
@@ -134,6 +152,8 @@ class ReportMessage {
         (type) => type.toString().split('.').last == map['senderType'],
         orElse: () => ReportMessageSender.guest,
       ),
+      senderEmail: map['senderEmail'] as String?,
+      senderName: map['senderName'] as String?,
       message: map['message'] as String,
       createdAt: DateTime.parse(map['createdAt'] as String),
     );

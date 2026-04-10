@@ -78,11 +78,11 @@ class _SplashScreenState extends State<SplashScreen>
         Navigator.of(context).pushReplacementNamed('/admin');
       } else {
         _hasNavigated = true;
-        Navigator.of(context).pushReplacementNamed('/guest');
+        Navigator.of(context).pushReplacementNamed('/login');
       }
     } else {
       _hasNavigated = true;
-      Navigator.of(context).pushReplacementNamed('/guest');
+        Navigator.of(context).pushReplacementNamed('/login');
     }
   }
 

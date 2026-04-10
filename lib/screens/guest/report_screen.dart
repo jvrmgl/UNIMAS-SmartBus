@@ -1,9 +1,11 @@
 import 'dart:io';
 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import '../../models/report_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/storage_service.dart';
@@ -21,7 +23,7 @@ class _ReportScreenState extends State<ReportScreen>
   final FirestoreService _firestoreService = FirestoreService();
   final DeviceService _deviceService = DeviceService();
   final StorageService _storageService = StorageService();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final ImagePicker _imagePicker = ImagePicker();
   late TabController _tabController;
 
@@ -46,15 +48,7 @@ class _ReportScreenState extends State<ReportScreen>
   }
 
   Future<void> _initializeReporterUid() async {
-    String? uid = _auth.currentUser?.uid;
-    if (uid == null) {
-      try {
-        final credential = await _auth.signInAnonymously();
-        uid = credential.user?.uid;
-      } catch (_) {
-        uid = null;
-      }
-    }
+    final uid = _auth.currentUser?.uid;
 
     if (!mounted) return;
     setState(() {
@@ -133,14 +127,18 @@ class _ReportScreenState extends State<ReportScreen>
     }
 
     setState(() => _isSubmitting = true);
+    final authProvider = context.read<AuthProvider>();
 
     final reporterUid = await _getReporterUid();
     if (reporterUid == null) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
-      _showMessage('Unable to identify current user session. Please try again.');
+      _showMessage('Please sign in to submit a report.');
       return;
     }
+
+    final reporterEmail = authProvider.currentUser?.email ?? _auth.currentUser?.email;
+    final reporterName = authProvider.currentUser?.fullName;
 
     final deviceId = await _deviceService.getDeviceId();
     final reportId = 'report_${DateTime.now().millisecondsSinceEpoch}';
@@ -158,6 +156,8 @@ class _ReportScreenState extends State<ReportScreen>
       reportId: reportId,
       deviceId: deviceId,
       reporterUid: reporterUid,
+      reporterEmail: reporterEmail,
+      reporterName: reporterName,
       busId: busId,
       routeId: routeId,
       category: _category,
@@ -413,7 +413,7 @@ class _ReportScreenState extends State<ReportScreen>
                         MaterialPageRoute(
                           builder: (_) => ReportDetailScreen(
                             report: report,
-                            senderType: ReportMessageSender.guest,
+                            senderType: ReportMessageSender.student,
                           ),
                         ),
                       );

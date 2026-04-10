@@ -31,28 +31,39 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   late Report _currentReport;
   StreamSubscription<Report?>? _reportSubscription;
   String? _currentSenderId;
+  String? _reporterEmail;
+  String? _reporterName;
+  final Map<String, String> _resolvedSenderEmails = {};
+  final Map<String, String> _resolvedSenderNames = {};
+  final Set<String> _resolvingSenderIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _currentReport = widget.report;
+    _reporterEmail = widget.report.reporterEmail;
+    _reporterName = widget.report.reporterName;
     _selectedStatus = _currentReport.status;
     if (_currentReport.adminNotes != null) {
       _adminNotesController.text = _currentReport.adminNotes!;
     }
     _initializeCurrentSenderId();
+    _resolveReporterIdentity();
     _reportSubscription = _firestoreService
         .getReportStream(widget.report.reportId)
         .listen((liveReport) {
       if (liveReport != null && mounted && !_isUpdating) {
         setState(() {
           _currentReport = liveReport;
+          _reporterEmail = liveReport.reporterEmail ?? _reporterEmail;
+          _reporterName = liveReport.reporterName ?? _reporterName;
           _selectedStatus = liveReport.status;
           if (_adminNotesController.text.trim().isEmpty &&
               (liveReport.adminNotes ?? '').isNotEmpty) {
             _adminNotesController.text = liveReport.adminNotes!;
           }
         });
+        _resolveReporterIdentity();
       }
     });
   }
@@ -64,6 +75,74 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         _currentSenderId = senderId;
       });
     }
+  }
+
+  Future<void> _resolveReporterIdentity() async {
+    if ((_reporterEmail ?? '').isNotEmpty) return;
+    final reporterUid = _currentReport.reporterUid;
+    if (reporterUid == null || reporterUid.isEmpty) return;
+
+    final reporter = await _firestoreService.getUserData(reporterUid);
+    if (!mounted || reporter == null) return;
+
+    setState(() {
+      _reporterEmail = reporter.email;
+      _reporterName = reporter.fullName;
+      _resolvedSenderEmails[reporter.uid] = reporter.email;
+      _resolvedSenderNames[reporter.uid] = reporter.fullName;
+    });
+  }
+
+  Future<void> _resolveSenderIdentity(String senderId) async {
+    if (senderId.isEmpty) return;
+    if (_resolvedSenderEmails.containsKey(senderId)) return;
+    if (_resolvingSenderIds.contains(senderId)) return;
+
+    _resolvingSenderIds.add(senderId);
+    final user = await _firestoreService.getUserData(senderId);
+    _resolvingSenderIds.remove(senderId);
+
+    if (!mounted || user == null) return;
+    setState(() {
+      _resolvedSenderEmails[senderId] = user.email;
+      _resolvedSenderNames[senderId] = user.fullName;
+    });
+  }
+
+  String? _senderEmailForMessage(ReportMessage message) {
+    if ((message.senderEmail ?? '').isNotEmpty) {
+      return message.senderEmail;
+    }
+
+    final senderType = message.senderType;
+    if (senderType == ReportMessageSender.student ||
+        senderType == ReportMessageSender.guest) {
+      return _reporterEmail;
+    }
+
+    final cached = _resolvedSenderEmails[message.senderId];
+    if (cached == null && message.senderId.isNotEmpty) {
+      _resolveSenderIdentity(message.senderId);
+    }
+    return cached;
+  }
+
+  String _senderLabelForMessage(ReportMessage message) {
+    if ((message.senderName ?? '').isNotEmpty) {
+      return message.senderName!;
+    }
+
+    final senderType = message.senderType;
+    if (senderType == ReportMessageSender.student ||
+        senderType == ReportMessageSender.guest) {
+      return _reporterName ?? 'Student';
+    }
+
+    final cached = _resolvedSenderNames[message.senderId];
+    if (cached == null && message.senderId.isNotEmpty) {
+      _resolveSenderIdentity(message.senderId);
+    }
+    return cached ?? 'Admin';
   }
 
   @override
@@ -79,7 +158,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
       final authProvider = context.read<AuthProvider>();
       return authProvider.firebaseUser?.uid ?? 'admin';
     }
-    return firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    return firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? 'student';
   }
 
   Future<void> _sendMessage() async {
@@ -91,9 +170,17 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     final senderId = await _getSenderId();
     if (!mounted) return;
 
+    final authProvider = context.read<AuthProvider>();
+    final senderEmail = authProvider.currentUser?.email ??
+        firebase_auth.FirebaseAuth.instance.currentUser?.email;
+    final senderName = authProvider.currentUser?.fullName ??
+        (widget.senderType == ReportMessageSender.admin ? 'Admin' : 'Student');
+
     final message = ReportMessage(
       senderId: senderId,
       senderType: widget.senderType,
+      senderEmail: senderEmail,
+      senderName: senderName,
       message: text,
       createdAt: DateTime.now(),
     );
@@ -235,6 +322,12 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     if (report.routeId != null && report.routeId!.isNotEmpty)
                       _metaChip(context, Icons.route,
                           'Route: ${report.routeId}'),
+                    if ((_reporterEmail ?? report.reporterEmail ?? '').isNotEmpty)
+                      _metaChip(
+                        context,
+                        Icons.alternate_email,
+                        'Reporter: ${_reporterEmail ?? report.reporterEmail}',
+                      ),
                   ],
                 ),
                 // Admin notes
@@ -397,7 +490,9 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     color: Theme.of(context).colorScheme.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Text(
-                  'Chatting with Reporter',
+                  widget.senderType == ReportMessageSender.admin
+                      ? 'Chat with ${_reporterEmail ?? 'Student'}'
+                      : 'Chat with Admin',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color:
                             Theme.of(context).colorScheme.onSurfaceVariant,
@@ -481,6 +576,10 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     final message = messages[messageIndex];
                     final isSentByCurrentUser =
                         _currentSenderId != null && message.senderId == _currentSenderId;
+                    final senderEmail = _senderEmailForMessage(message);
+                    final senderLabel = _senderLabelForMessage(message);
+                    final identityText =
+                      (senderEmail ?? '').isNotEmpty ? senderEmail! : senderLabel;
                     
                     return Column(
                       children: [
@@ -523,6 +622,23 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                                 ? CrossAxisAlignment.end
                                 : CrossAxisAlignment.start,
                             children: [
+                              Padding(
+                                padding: isSentByCurrentUser
+                                    ? const EdgeInsets.only(right: 4, bottom: 2)
+                                    : const EdgeInsets.only(left: 4, bottom: 2),
+                                child: Text(
+                                  identityText,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
                               Container(
                                 margin: const EdgeInsets.only(bottom: 4),
                                 padding: const EdgeInsets.all(12),

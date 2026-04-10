@@ -15,6 +15,8 @@ class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
+  static final RegExp _emailPattern =
+      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   bool _obscurePassword = true;
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -43,50 +45,202 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  void _handleLogin() async {
+  Future<void> _handleLogin({bool allowDeviceTransfer = false}) async {
     // Dismiss keyboard before doing anything so the dialog always renders
     // fully visible regardless of keyboard state.
     FocusScope.of(context).unfocus();
 
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
       _showErrorDialog('Please fill in all fields');
+      return;
+    }
+
+    if (!_emailPattern.hasMatch(email)) {
+      _showErrorDialog('Please enter a valid email address');
       return;
     }
 
     final authProvider = context.read<AuthProvider>();
     final success = await authProvider.signIn(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
+      email: email,
+      password: password,
+      allowDeviceTransfer: allowDeviceTransfer,
     );
 
     if (!mounted) return;
 
     if (success) {
-      if (mounted) {
-        int attempts = 0;
-        while (authProvider.currentUser == null && attempts < 50) {
-          await Future.delayed(const Duration(milliseconds: 100));
-          attempts++;
-        }
-
-        if (mounted && authProvider.currentUser != null) {
-          final userRole = authProvider.currentUser?.role;
-          if (userRole == UserRole.student) {
-            Navigator.of(context).pushReplacementNamed('/student');
-          } else if (userRole == UserRole.driver) {
-            Navigator.of(context).pushReplacementNamed('/driver');
-          } else if (userRole == UserRole.admin) {
-            Navigator.of(context).pushReplacementNamed('/admin');
-          } else {
-            _showErrorDialog('Your account role is not recognized. Please contact admin.');
-          }
-        } else {
-          _showErrorDialog('Failed to load user data');
-        }
+      final userRole = authProvider.currentUser?.role;
+      if (userRole == UserRole.student) {
+        Navigator.of(context).pushReplacementNamed('/student');
+      } else if (userRole == UserRole.driver) {
+        Navigator.of(context).pushReplacementNamed('/driver');
+      } else if (userRole == UserRole.admin) {
+        Navigator.of(context).pushReplacementNamed('/admin');
+      } else {
+        _showErrorDialog(
+          'Your account role is not recognized. Please contact admin.',
+        );
       }
-    } else {
-      _showErrorDialog(authProvider.error ?? 'Login failed');
+      return;
     }
+
+    if (authProvider.requiresDeviceTransfer && !allowDeviceTransfer) {
+      final shouldTransfer = await _showDeviceTransferDialog();
+      if (!mounted) return;
+      if (shouldTransfer == true) {
+        await _handleLogin(allowDeviceTransfer: true);
+      }
+      return;
+    }
+
+    _showErrorDialog(authProvider.error ?? 'Login failed');
+  }
+
+  Future<bool?> _showDeviceTransferDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Transfer Account to This Device?'),
+        content: const Text(
+          'This student account is linked to another device. Continue to transfer it to this device now?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Transfer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleForgotPassword() async {
+    FocusScope.of(context).unfocus();
+
+    final authProvider = context.read<AuthProvider>();
+    final emailController =
+        TextEditingController(text: _emailController.text.trim());
+    String? inlineError;
+    var isSubmitting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Reset Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your account email. We will send a password reset link.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: emailController,
+                enabled: !isSubmitting,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+              if (inlineError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  inlineError!,
+                  style: TextStyle(
+                    color: Theme.of(dialogContext).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+
+                      if (email.isEmpty) {
+                        setDialogState(
+                          () => inlineError = 'Please enter your email address.',
+                        );
+                        return;
+                      }
+
+                      if (!_emailPattern.hasMatch(email)) {
+                        setDialogState(
+                          () => inlineError = 'Please enter a valid email address.',
+                        );
+                        return;
+                      }
+
+                      setDialogState(() {
+                        inlineError = null;
+                        isSubmitting = true;
+                      });
+
+                      final success = await authProvider.resetPassword(email);
+                      if (!dialogContext.mounted) return;
+
+                      setDialogState(() => isSubmitting = false);
+
+                      if (success) {
+                        Navigator.of(dialogContext).pop();
+                        if (!mounted) return;
+                        showDialog<void>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Check Your Email'),
+                            content: Text(
+                              'Password reset link sent to $email.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('OK'),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        setDialogState(
+                          () => inlineError =
+                              authProvider.error ?? 'Unable to send reset email.',
+                        );
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Send Link'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    emailController.dispose();
   }
 
   void _showErrorDialog(String message) {
@@ -266,13 +420,21 @@ class _LoginScreenState extends State<LoginScreen>
                         // Forgot password
                         Center(
                           child: TextButton(
-                            onPressed: () {},
+                            onPressed: _handleForgotPassword,
                             child: const Text('Forgot Password?'),
+                          ),
+                        ),
+                        Center(
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pushNamed('/signup');
+                            },
+                            child: const Text('Create Student Account'),
                           ),
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Accounts are managed by admin. Contact administrator for staff access.',
+                          'Students can self-register. Driver and admin accounts are created by admin.',
                           style: Theme.of(context).textTheme.bodySmall,
                           textAlign: TextAlign.center,
                         ),

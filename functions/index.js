@@ -254,6 +254,162 @@ function fillTemplate(template, vars) {
   );
 }
 
+function getMapsApiKeyOrThrow() {
+  const key = process.env.GOOGLE_MAPS_API_KEY || '';
+  if (!key) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'GOOGLE_MAPS_API_KEY is not configured in Cloud Functions environment.'
+    );
+  }
+  return key;
+}
+
+function getRateLimitIdentity(context) {
+  return (
+    context.auth?.uid ||
+    context.rawRequest?.ip ||
+    'anonymous_requester'
+  );
+}
+
+// ── Places API (New) proxy: Autocomplete suggestions ───────────────────────
+// Keeps Maps key server-side and avoids Android app-restriction mismatches
+// for HTTP Places calls made directly from the client.
+exports.placesAutocompleteNew = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    enforceRateLimit(getRateLimitIdentity(context), {
+      maxCalls: 60,
+      windowMs: 60_000,
+    });
+
+    const input = typeof data?.input === 'string' ? data.input.trim() : '';
+    const limit = Math.min(Math.max(Number(data?.limit || 3), 1), 5);
+    if (input.length < 3) {
+      return { suggestions: [] };
+    }
+
+    const key = getMapsApiKeyOrThrow();
+    const endpoint = 'https://places.googleapis.com/v1/places:autocomplete';
+    const body = {
+      input,
+      includedRegionCodes: ['MY'],
+      locationBias: {
+        circle: {
+          center: {
+            latitude: 1.4655,
+            longitude: 110.3578,
+          },
+          radius: 50000,
+        },
+      },
+    };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask':
+          'suggestions.placePrediction.text.text,suggestions.placePrediction.placeId',
+      },
+      body: JSON.stringify(body),
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      const message = payload?.error?.message || 'Places autocomplete request failed.';
+      throw new functions.https.HttpsError('internal', message);
+    }
+
+    const suggestions = Array.isArray(payload?.suggestions)
+      ? payload.suggestions
+          .map((item) => item?.placePrediction?.text?.text)
+          .filter((text) => typeof text === 'string' && text.trim().length > 0)
+          .slice(0, limit)
+      : [];
+
+    return { suggestions };
+  });
+
+// ── Places API (New) proxy: Text search -> coordinates ─────────────────────
+exports.searchPlaceCoordinatesNew = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    enforceRateLimit(getRateLimitIdentity(context), {
+      maxCalls: 30,
+      windowMs: 60_000,
+    });
+
+    const query = typeof data?.query === 'string' ? data.query.trim() : '';
+    if (!query) {
+      return { location: null };
+    }
+
+    const key = getMapsApiKeyOrThrow();
+    const endpoint = 'https://places.googleapis.com/v1/places:searchText';
+    const body = {
+      textQuery: query,
+      regionCode: 'MY',
+      languageCode: 'en',
+      locationBias: {
+        circle: {
+          center: {
+            latitude: 1.4655,
+            longitude: 110.3578,
+          },
+          radius: 50000,
+        },
+      },
+      pageSize: 1,
+    };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask':
+          'places.displayName.text,places.location.latitude,places.location.longitude',
+      },
+      body: JSON.stringify(body),
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      const message = payload?.error?.message || 'Place search request failed.';
+      throw new functions.https.HttpsError('internal', message);
+    }
+
+    const firstPlace = Array.isArray(payload?.places) ? payload.places[0] : null;
+    const latitude = Number(firstPlace?.location?.latitude);
+    const longitude = Number(firstPlace?.location?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return { location: null };
+    }
+
+    return {
+      location: {
+        latitude,
+        longitude,
+      },
+      name: firstPlace?.displayName?.text || null,
+    };
+  });
+
 // ── 1. Approaching-bus notifications ─────────────────────────────────────────
 // Runs every 2 minutes. For each student waiting at a stop, checks if any
 // active bus is within 500 m. If so, sends an FCM push and marks the
@@ -442,7 +598,87 @@ exports.sendDriverShiftReminders = functions
     return null;
   });
 
-// ── 4. Bus activated by admin → notify assigned driver ────────────────────────
+// ── 4. Auto-end stale active shifts (hard safeguard) ───────────────────────
+// Runs every 5 minutes. If an active bus has no GPS update for > 15 minutes,
+// automatically ends the shift and force-completes active passenger sessions
+// and trips. This covers unexpected app termination where client cleanup may
+// never run.
+exports.autoEndStaleShifts = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 5 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const staleBefore = new Date(Date.now() - 15 * 60 * 1000);
+    const db = admin.firestore();
+
+    const activeBusesSnap = await db
+      .collection('buses')
+      .where('isActive', '==', true)
+      .get();
+
+    for (const busDoc of activeBusesSnap.docs) {
+      const bus = busDoc.data();
+
+      // Parse lastUpdated (ISO string or Firestore Timestamp).
+      let lastUpdated = null;
+      if (bus.lastUpdated && typeof bus.lastUpdated.toDate === 'function') {
+        lastUpdated = bus.lastUpdated.toDate();
+      } else if (bus.lastUpdated) {
+        lastUpdated = new Date(bus.lastUpdated);
+      }
+
+      // If timestamp is missing/invalid, skip auto-ending to avoid false stops.
+      if (!lastUpdated || Number.isNaN(lastUpdated.getTime())) continue;
+      if (lastUpdated > staleBefore) continue;
+
+      const [sessionsSnap, tripsSnap] = await Promise.all([
+        db
+          .collection('device_bus_sessions')
+          .where('busId', '==', busDoc.id)
+          .where('status', '==', 'active')
+          .get(),
+        db
+          .collection('student_trips')
+          .where('busId', '==', busDoc.id)
+          .where('status', '==', 'active')
+          .get(),
+      ]);
+
+      const batch = db.batch();
+      batch.update(busDoc.ref, {
+        isActive: false,
+        currentOccupancy: 0,
+        activatedByAdminName: admin.firestore.FieldValue.delete(),
+        autoEndedBySafeguard: true,
+        autoEndedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      for (const sessionDoc of sessionsSnap.docs) {
+        batch.update(sessionDoc.ref, {
+          status: 'completed',
+          tappedOutAt: admin.firestore.FieldValue.serverTimestamp(),
+          closedByShiftEnd: true,
+          closedByStaleShiftSafeguard: true,
+        });
+      }
+
+      for (const tripDoc of tripsSnap.docs) {
+        batch.update(tripDoc.ref, {
+          status: 'completed',
+          offBoardedAt: admin.firestore.FieldValue.serverTimestamp(),
+          closedByShiftEnd: true,
+          closedByStaleShiftSafeguard: true,
+        });
+      }
+
+      await batch.commit();
+    }
+
+    return null;
+  });
+
+// ── 5. Bus activated by admin → notify assigned driver ────────────────────────
 // Triggers whenever a bus document is updated. When isActive flips false → true
 // and a driver is assigned, sends an FCM push so the driver knows their shift
 // has been started remotely — even if the app is closed.

@@ -10,9 +10,49 @@ import '../models/user_model.dart';
 import '../models/schedule_image_model.dart';
 import '../models/student_trip_model.dart';
 
+class StudentDeviceBindingResult {
+  final bool isAllowed;
+  final bool requiresTransfer;
+  final String? message;
+
+  const StudentDeviceBindingResult._({
+    required this.isAllowed,
+    required this.requiresTransfer,
+    this.message,
+  });
+
+  const StudentDeviceBindingResult.allowed({String? message})
+      : this._(isAllowed: true, requiresTransfer: false, message: message);
+
+  const StudentDeviceBindingResult.transferRequired({String? message})
+      : this._(
+          isAllowed: false,
+          requiresTransfer: true,
+          message:
+              message ?? 'This account is already linked to another device.',
+        );
+
+  const StudentDeviceBindingResult.denied({String? message})
+      : this._(
+          isAllowed: false,
+          requiresTransfer: false,
+          message: message ?? 'Unable to verify account device.',
+        );
+}
+
 class FirestoreService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'asia-southeast1');
+  FirestoreService({
+    FirebaseFirestore? firestore,
+    FirebaseFunctions? functions,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _injectedFunctions = functions;
+
+  final FirebaseFirestore _firestore;
+  final FirebaseFunctions? _injectedFunctions;
+
+  FirebaseFunctions get _functions =>
+      _injectedFunctions ??
+      FirebaseFunctions.instanceFor(region: 'asia-southeast1');
 
   // ============ BUS OPERATIONS ============
 
@@ -144,6 +184,15 @@ class FirestoreService {
           'activatedByAdminName': FieldValue.delete(),
         'lastUpdated': DateTime.now().toIso8601String(),
       });
+
+      // Always clear stranded student state when a bus is set inactive,
+      // regardless of whether the driver app is still running.
+      if (!isActive) {
+        await Future.wait([
+          clearBusActiveSessions(busId),
+          completeAllBusStudentTrips(busId),
+        ]);
+      }
       return null;
     } catch (e) {
       return 'Error updating bus status: $e';
@@ -182,6 +231,12 @@ class FirestoreService {
         'activatedByAdminName': FieldValue.delete(),
         'lastUpdated': DateTime.now().toIso8601String(),
       });
+
+      // Driver unassignment also ends active passenger sessions/trips.
+      await Future.wait([
+        clearBusActiveSessions(busId),
+        completeAllBusStudentTrips(busId),
+      ]);
       return null;
     } catch (e) {
       return 'Error removing driver: $e';
@@ -268,7 +323,10 @@ class FirestoreService {
   // Add new route
   Future<String?> addRoute(BusRoute route) async {
     try {
-      await _firestore.collection('routes').doc(route.routeId).set(route.toMap());
+      await _firestore
+          .collection('routes')
+          .doc(route.routeId)
+          .set(route.toMap());
       return null;
     } catch (e) {
       return 'Error adding route: $e';
@@ -278,7 +336,10 @@ class FirestoreService {
   // Update route
   Future<String?> updateRoute(BusRoute route) async {
     try {
-      await _firestore.collection('routes').doc(route.routeId).update(route.toMap());
+      await _firestore
+          .collection('routes')
+          .doc(route.routeId)
+          .update(route.toMap());
       return null;
     } catch (e) {
       return 'Error updating route: $e';
@@ -303,7 +364,8 @@ class FirestoreService {
   // Trigger backend precompute for all route leg distances.
   Future<String?> recomputeAllRouteLegDistances() async {
     try {
-      final callable = _functions.httpsCallable('recomputeAllRouteLegDistances');
+      final callable =
+          _functions.httpsCallable('recomputeAllRouteLegDistances');
       await callable.call({});
       return null;
     } catch (e) {
@@ -341,9 +403,7 @@ class FirestoreService {
   Future<List<BusStop>> getBusStops() async {
     try {
       final snapshot = await _firestore.collection('bus_stops').get();
-      return snapshot.docs
-          .map((doc) => BusStop.fromMap(doc.data()))
-          .toList();
+      return snapshot.docs.map((doc) => BusStop.fromMap(doc.data())).toList();
     } catch (e) {
       return [];
     }
@@ -352,9 +412,8 @@ class FirestoreService {
   // Stream all bus stops in real time
   Stream<List<BusStop>> getBusStopsStream() {
     return _firestore.collection('bus_stops').snapshots().map(
-          (snapshot) => snapshot.docs
-              .map((doc) => BusStop.fromMap(doc.data()))
-              .toList(),
+          (snapshot) =>
+              snapshot.docs.map((doc) => BusStop.fromMap(doc.data())).toList(),
         );
   }
 
@@ -374,7 +433,10 @@ class FirestoreService {
   // Add bus stop
   Future<String?> addBusStop(BusStop stop) async {
     try {
-      await _firestore.collection('bus_stops').doc(stop.stopId).set(stop.toMap());
+      await _firestore
+          .collection('bus_stops')
+          .doc(stop.stopId)
+          .set(stop.toMap());
       return null;
     } catch (e) {
       return 'Error adding bus stop: $e';
@@ -384,7 +446,10 @@ class FirestoreService {
   // Update bus stop
   Future<String?> updateBusStop(BusStop stop) async {
     try {
-      await _firestore.collection('bus_stops').doc(stop.stopId).update(stop.toMap());
+      await _firestore
+          .collection('bus_stops')
+          .doc(stop.stopId)
+          .update(stop.toMap());
       return null;
     } catch (e) {
       return 'Error updating bus stop: $e';
@@ -446,7 +511,10 @@ class FirestoreService {
   // Add schedule
   Future<String?> addSchedule(BusSchedule schedule) async {
     try {
-      await _firestore.collection('schedules').doc(schedule.scheduleId).set(schedule.toMap());
+      await _firestore
+          .collection('schedules')
+          .doc(schedule.scheduleId)
+          .set(schedule.toMap());
       return null;
     } catch (e) {
       return 'Error adding schedule: $e';
@@ -459,9 +527,7 @@ class FirestoreService {
   Future<List<Report>> getReports() async {
     try {
       final snapshot = await _firestore.collection('reports').get();
-      return snapshot.docs
-          .map((doc) => Report.fromMap(doc.data()))
-          .toList();
+      return snapshot.docs.map((doc) => Report.fromMap(doc.data())).toList();
     } catch (e) {
       return [];
     }
@@ -474,9 +540,8 @@ class FirestoreService {
         .where('reporterUid', isEqualTo: reporterUid)
         .snapshots()
         .map((snapshot) {
-      final reports = snapshot.docs
-          .map((doc) => Report.fromMap(doc.data()))
-          .toList();
+      final reports =
+          snapshot.docs.map((doc) => Report.fromMap(doc.data())).toList();
       reports.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return reports;
     });
@@ -489,9 +554,7 @@ class FirestoreService {
         .where('studentId', isEqualTo: deviceId)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => Report.fromMap(doc.data()))
-          .toList();
+      return snapshot.docs.map((doc) => Report.fromMap(doc.data())).toList();
     });
   }
 
@@ -507,15 +570,17 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => Report.fromMap(doc.data()))
-          .toList();
+      return snapshot.docs.map((doc) => Report.fromMap(doc.data())).toList();
     });
   }
 
   // Stream single report by ID
   Stream<Report?> getReportStream(String reportId) {
-    return _firestore.collection('reports').doc(reportId).snapshots().map((doc) {
+    return _firestore
+        .collection('reports')
+        .doc(reportId)
+        .snapshots()
+        .map((doc) {
       if (!doc.exists || doc.data() == null) return null;
       return Report.fromMap(doc.data()!);
     });
@@ -556,7 +621,10 @@ class FirestoreService {
   // Submit report
   Future<String?> submitReport(Report report) async {
     try {
-      await _firestore.collection('reports').doc(report.reportId).set(report.toMap());
+      await _firestore
+          .collection('reports')
+          .doc(report.reportId)
+          .set(report.toMap());
       return null;
     } catch (e) {
       return 'Error submitting report: $e';
@@ -564,7 +632,8 @@ class FirestoreService {
   }
 
   // Update report status
-  Future<String?> updateReportStatus(String reportId, ReportStatus status, {String? adminNotes}) async {
+  Future<String?> updateReportStatus(String reportId, ReportStatus status,
+      {String? adminNotes}) async {
     try {
       final updateData = {
         'status': status.toString().split('.').last,
@@ -600,7 +669,10 @@ class FirestoreService {
   // Create announcement
   Future<String?> createAnnouncement(Announcement announcement) async {
     try {
-      await _firestore.collection('announcements').doc(announcement.announcementId).set(announcement.toMap());
+      await _firestore
+          .collection('announcements')
+          .doc(announcement.announcementId)
+          .set(announcement.toMap());
       // Cloud Function will automatically send push notification
       return null;
     } catch (e) {
@@ -611,11 +683,63 @@ class FirestoreService {
   // Resend announcement notification via Cloud Function
   Future<String?> resendAnnouncementNotification(String announcementId) async {
     try {
-      final callable = _functions.httpsCallable('resendAnnouncementNotification');
+      final callable =
+          _functions.httpsCallable('resendAnnouncementNotification');
       await callable.call({'announcementId': announcementId});
       return null;
     } catch (e) {
       return 'Error resending notification: $e';
+    }
+  }
+
+  // Places API (New) autocomplete via Cloud Function proxy.
+  Future<List<String>> fetchPlaceAutocompleteSuggestions(
+    String input, {
+    int limit = 3,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('placesAutocompleteNew');
+      final response = await callable.call({
+        'input': input,
+        'limit': limit,
+      });
+
+      final data = response.data;
+      if (data is! Map) return [];
+      final suggestionsRaw = data['suggestions'];
+      if (suggestionsRaw is! List) return [];
+
+      return suggestionsRaw
+          .whereType<String>()
+          .map((text) => text.trim())
+          .where((text) => text.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Places API (New) text search -> coordinates via Cloud Function proxy.
+  Future<Map<String, double>?> searchPlaceCoordinates(String query) async {
+    try {
+      final callable = _functions.httpsCallable('searchPlaceCoordinatesNew');
+      final response = await callable.call({'query': query});
+
+      final data = response.data;
+      if (data is! Map) return null;
+      final location = data['location'];
+      if (location is! Map) return null;
+
+      final latitude = (location['latitude'] as num?)?.toDouble();
+      final longitude = (location['longitude'] as num?)?.toDouble();
+      if (latitude == null || longitude == null) return null;
+
+      return {
+        'latitude': latitude,
+        'longitude': longitude,
+      };
+    } catch (_) {
+      return null;
     }
   }
 
@@ -652,6 +776,262 @@ class FirestoreService {
       return null;
     } catch (e) {
       return null;
+    }
+  }
+
+  // Check whether an email is already registered as a staff account.
+  Future<bool> isEmailRegisteredAsStaff(String email) async {
+    try {
+      final normalizedEmail = email.trim().toLowerCase();
+      if (normalizedEmail.isEmpty) return false;
+
+      bool isStaffRole(String role) => role == 'admin' || role == 'driver';
+
+      // Fast path for migrated docs: single-field indexed equality lookup.
+      final normalizedSnapshot = await _firestore
+          .collection('users')
+          .where('normalizedEmail', isEqualTo: normalizedEmail)
+          .limit(3)
+          .get();
+
+      if (normalizedSnapshot.docs.isNotEmpty) {
+        for (final doc in normalizedSnapshot.docs) {
+          final role = (doc.data()['role'] as String? ?? '').toLowerCase();
+          if (isStaffRole(role)) return true;
+        }
+        return false;
+      }
+
+      // Fast fallback for pre-migration docs that only have exact-case email.
+      final rawEmail = email.trim();
+      final exactSnapshot = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: rawEmail)
+          .limit(3)
+          .get();
+      for (final doc in exactSnapshot.docs) {
+        final role = (doc.data()['role'] as String? ?? '').toLowerCase();
+        if (isStaffRole(role)) return true;
+      }
+
+      if (rawEmail != normalizedEmail) {
+        final lowercaseSnapshot = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: normalizedEmail)
+            .limit(3)
+            .get();
+        for (final doc in lowercaseSnapshot.docs) {
+          final role = (doc.data()['role'] as String? ?? '').toLowerCase();
+          if (isStaffRole(role)) return true;
+        }
+      }
+
+      // Legacy compatibility fallback: only staff docs, then case-insensitive
+      // compare in memory. This path should become rare after migration.
+      final legacyStaffSnapshot = await _firestore
+          .collection('users')
+          .where('role', whereIn: ['admin', 'driver']).get();
+
+      for (final doc in legacyStaffSnapshot.docs) {
+        final docEmail =
+            (doc.data()['email'] as String? ?? '').trim().toLowerCase();
+        if (docEmail == normalizedEmail) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<StudentDeviceBindingResult> ensureStudentDeviceBinding({
+    required String uid,
+    required String deviceId,
+    bool allowTransfer = false,
+  }) async {
+    String? previousBoundDeviceId;
+    try {
+      final userRef = _firestore.collection('users').doc(uid);
+
+      final result = await _firestore
+          .runTransaction<StudentDeviceBindingResult>((transaction) async {
+        final snapshot = await transaction.get(userRef);
+        if (!snapshot.exists || snapshot.data() == null) {
+          return const StudentDeviceBindingResult.denied(
+            message:
+                'Your account profile could not be found. Please contact admin.',
+          );
+        }
+
+        final data = snapshot.data()!;
+        final role = (data['role'] as String? ?? '').toLowerCase();
+
+        // Device binding is only enforced for students.
+        if (role != 'student') {
+          transaction.set(
+            userRef,
+            {
+              'lastLoginAt': FieldValue.serverTimestamp(),
+              'lastLoginDeviceId': deviceId,
+            },
+            SetOptions(merge: true),
+          );
+          return const StudentDeviceBindingResult.allowed();
+        }
+
+        final boundDeviceId =
+            (data['boundDeviceId'] as String?) ?? (data['deviceId'] as String?);
+
+        if (boundDeviceId == null || boundDeviceId.isEmpty) {
+          transaction.set(
+            userRef,
+            {
+              'boundDeviceId': deviceId,
+              'boundDeviceAt': FieldValue.serverTimestamp(),
+              'lastLoginAt': FieldValue.serverTimestamp(),
+              'lastLoginDeviceId': deviceId,
+            },
+            SetOptions(merge: true),
+          );
+          return const StudentDeviceBindingResult.allowed();
+        }
+
+        if (boundDeviceId == deviceId) {
+          transaction.set(
+            userRef,
+            {
+              'lastLoginAt': FieldValue.serverTimestamp(),
+              'lastLoginDeviceId': deviceId,
+            },
+            SetOptions(merge: true),
+          );
+          return const StudentDeviceBindingResult.allowed();
+        }
+
+        if (!allowTransfer) {
+          return const StudentDeviceBindingResult.transferRequired(
+            message:
+                'This student account is linked to another device. Continue to transfer it to this device.',
+          );
+        }
+
+        previousBoundDeviceId = boundDeviceId;
+        transaction.set(
+          userRef,
+          {
+            'boundDeviceId': deviceId,
+            'lastLoginAt': FieldValue.serverTimestamp(),
+            'lastLoginDeviceId': deviceId,
+            'lastDeviceTransferAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        return const StudentDeviceBindingResult.allowed();
+      });
+
+      if (result.isAllowed) {
+        await _backfillStudentOwnership(
+          uid: uid,
+          currentDeviceId: deviceId,
+          oldDeviceId: previousBoundDeviceId,
+        );
+
+        if (previousBoundDeviceId != null &&
+            previousBoundDeviceId!.isNotEmpty &&
+            previousBoundDeviceId != deviceId) {
+          await _closeTransferredDeviceSessions(previousBoundDeviceId!);
+        }
+      }
+
+      return result;
+    } catch (_) {
+      return const StudentDeviceBindingResult.denied(
+        message: 'Unable to verify account device right now. Please try again.',
+      );
+    }
+  }
+
+  Future<void> _backfillStudentOwnership({
+    required String uid,
+    required String currentDeviceId,
+    String? oldDeviceId,
+  }) async {
+    try {
+      final deviceIds = <String>{
+        currentDeviceId,
+        if (oldDeviceId != null && oldDeviceId.isNotEmpty) oldDeviceId,
+      };
+
+      for (final deviceId in deviceIds) {
+        final trips = await _firestore
+            .collection('student_trips')
+            .where('deviceId', isEqualTo: deviceId)
+            .get();
+
+        if (trips.docs.isEmpty) continue;
+
+        final batch = _firestore.batch();
+        for (final tripDoc in trips.docs) {
+          final data = tripDoc.data();
+          final tripUid = data['studentUid'] as String?;
+          if (tripUid == uid) continue;
+          batch.set(
+            tripDoc.reference,
+            {
+              'studentUid': uid,
+            },
+            SetOptions(merge: true),
+          );
+        }
+        await batch.commit();
+      }
+    } catch (_) {
+      // Best effort only.
+    }
+  }
+
+  Future<void> _closeTransferredDeviceSessions(String previousDeviceId) async {
+    try {
+      final activeSessions = await _firestore
+          .collection('device_bus_sessions')
+          .where('deviceId', isEqualTo: previousDeviceId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      final activeTrips = await _firestore
+          .collection('student_trips')
+          .where('deviceId', isEqualTo: previousDeviceId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      final batch = _firestore.batch();
+      var hasWrites = false;
+
+      for (final doc in activeSessions.docs) {
+        hasWrites = true;
+        batch.update(doc.reference, {
+          'status': 'completed',
+          'tappedOutAt': FieldValue.serverTimestamp(),
+          'closedByDeviceTransfer': true,
+        });
+      }
+
+      for (final doc in activeTrips.docs) {
+        hasWrites = true;
+        batch.update(doc.reference, {
+          'status': 'completed',
+          'offBoardedAt': FieldValue.serverTimestamp(),
+          'closedByDeviceTransfer': true,
+        });
+      }
+
+      if (hasWrites) {
+        await batch.commit();
+      }
+    } catch (_) {
+      // Best effort only.
     }
   }
 
@@ -698,13 +1078,12 @@ class FirestoreService {
     required String uid,
     required String fullName,
     required String email,
-    String? phoneNumber,
   }) async {
     try {
       final updateData = {
         'fullName': fullName,
         'email': email,
-        'phoneNumber': phoneNumber ?? '',
+        'normalizedEmail': email.trim().toLowerCase(),
       };
       await _firestore.collection('users').doc(uid).update(updateData);
       return null;
@@ -748,7 +1127,9 @@ class FirestoreService {
           .where('isActive', isEqualTo: true)
           .orderBy('order')
           .get();
-      return snapshot.docs.map((doc) => ScheduleImage.fromMap(doc.data())).toList();
+      return snapshot.docs
+          .map((doc) => ScheduleImage.fromMap(doc.data()))
+          .toList();
     } catch (e) {
       return [];
     }
@@ -783,10 +1164,7 @@ class FirestoreService {
   // Delete schedule image
   Future<String?> deleteScheduleImage(String imageId) async {
     try {
-      await _firestore
-          .collection('schedule_images')
-          .doc(imageId)
-          .delete();
+      await _firestore.collection('schedule_images').doc(imageId).delete();
       return null;
     } catch (e) {
       return 'Error deleting schedule image: $e';
@@ -923,12 +1301,166 @@ class FirestoreService {
     });
   }
 
+  // Best-effort safeguard: close active session/trip when app is terminated
+  // or when client-side reconciliation detects stale active state.
+  Future<String?> autoTapOutStudentSession({
+    required String deviceId,
+    String? studentUid,
+    String reason = 'safeguard',
+    bool decrementBusOccupancy = true,
+  }) async {
+    try {
+      final activeSessionsSnapshot = await _firestore
+          .collection('device_bus_sessions')
+          .where('deviceId', isEqualTo: deviceId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      final busSessionCounts = <String, int>{};
+      for (final doc in activeSessionsSnapshot.docs) {
+        final busId = doc.data()['busId'] as String?;
+        if (busId != null && busId.isNotEmpty) {
+          busSessionCounts[busId] = (busSessionCounts[busId] ?? 0) + 1;
+        }
+      }
+
+      QuerySnapshot<Map<String, dynamic>> activeTripsSnapshot;
+      if (studentUid != null && studentUid.isNotEmpty) {
+        activeTripsSnapshot = await _firestore
+            .collection('student_trips')
+            .where('studentUid', isEqualTo: studentUid)
+            .where('status', isEqualTo: 'active')
+            .get();
+
+        // Legacy fallback for trips without studentUid.
+        if (activeTripsSnapshot.docs.isEmpty) {
+          activeTripsSnapshot = await _firestore
+              .collection('student_trips')
+              .where('deviceId', isEqualTo: deviceId)
+              .where('status', isEqualTo: 'active')
+              .get();
+        }
+      } else {
+        activeTripsSnapshot = await _firestore
+            .collection('student_trips')
+            .where('deviceId', isEqualTo: deviceId)
+            .where('status', isEqualTo: 'active')
+            .get();
+      }
+
+      if (activeSessionsSnapshot.docs.isEmpty &&
+          activeTripsSnapshot.docs.isEmpty) {
+        return null;
+      }
+
+      final batch = _firestore.batch();
+      for (final sessionDoc in activeSessionsSnapshot.docs) {
+        batch.update(sessionDoc.reference, {
+          'status': 'completed',
+          'tappedOutAt': FieldValue.serverTimestamp(),
+          'closedBySafeguard': true,
+          'safeguardReason': reason,
+        });
+      }
+
+      for (final tripDoc in activeTripsSnapshot.docs) {
+        batch.update(tripDoc.reference, {
+          'status': 'completed',
+          'offBoardedAt': FieldValue.serverTimestamp(),
+          'closedBySafeguard': true,
+          'safeguardReason': reason,
+        });
+      }
+
+      await batch.commit();
+
+      if (decrementBusOccupancy) {
+        for (final entry in busSessionCounts.entries) {
+          await _decrementBusOccupancySafely(entry.key, entry.value);
+        }
+      }
+
+      return null;
+    } catch (e) {
+      return 'Error auto tapping out student session: $e';
+    }
+  }
+
+  // Reconcile stale student state: an active trip must be backed by an
+  // active session on an active bus. If not, auto-complete stale data.
+  Future<bool> reconcileStudentActiveState({
+    required String deviceId,
+    String? studentUid,
+  }) async {
+    try {
+      final activeTrip = await getActiveTrip(
+        deviceId,
+        studentUid: studentUid,
+      );
+      if (activeTrip == null) return false;
+
+      final activeSessionBusId = await getDeviceActiveBusId(deviceId);
+      final shouldCloseBecauseMissingSession =
+          activeSessionBusId == null || activeSessionBusId.isEmpty;
+
+      if (shouldCloseBecauseMissingSession) {
+        await autoTapOutStudentSession(
+          deviceId: deviceId,
+          studentUid: studentUid,
+          reason: 'reconcile_missing_session',
+          decrementBusOccupancy: false,
+        );
+        return true;
+      }
+
+      final sessionBus = await getBus(activeSessionBusId);
+      final sessionBusInactive = sessionBus == null || !sessionBus.isActive;
+      final tripBusMismatch = activeTrip.busId != activeSessionBusId;
+
+      if (!sessionBusInactive && !tripBusMismatch) {
+        return false;
+      }
+
+      await autoTapOutStudentSession(
+        deviceId: deviceId,
+        studentUid: studentUid,
+        reason: sessionBusInactive
+            ? 'reconcile_inactive_bus'
+            : 'reconcile_trip_session_mismatch',
+        decrementBusOccupancy: !sessionBusInactive,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _decrementBusOccupancySafely(
+      String busId, int decrementBy) async {
+    if (decrementBy <= 0) return;
+    await _firestore.runTransaction((transaction) async {
+      final busRef = _firestore.collection('buses').doc(busId);
+      final snapshot = await transaction.get(busRef);
+      if (!snapshot.exists) return;
+
+      final currentOccupancy =
+          (snapshot.data()?['currentOccupancy'] as num?)?.toInt() ?? 0;
+      final nextOccupancy = (currentOccupancy - decrementBy).clamp(0, 9999);
+
+      transaction.update(busRef, {
+        'currentOccupancy': nextOccupancy,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+    });
+  }
+
   // ============ STUDENT TRIP OPERATIONS ============
 
   // Create a new trip when student taps in
   Future<String?> createStudentTrip({
     required String deviceId,
     required String busId,
+    String? studentUid,
   }) async {
     try {
       // Get bus details
@@ -949,6 +1481,7 @@ class FirestoreService {
       final trip = StudentTrip(
         tripId: tripId,
         deviceId: deviceId,
+        studentUid: studentUid,
         busId: busId,
         busNumber: bus.busNumber,
         busRegistrationNumber: bus.registrationNumber,
@@ -959,7 +1492,10 @@ class FirestoreService {
         status: 'active',
       );
 
-      await _firestore.collection('student_trips').doc(tripId).set(trip.toMap());
+      await _firestore
+          .collection('student_trips')
+          .doc(tripId)
+          .set(trip.toMap());
       return null; // Success
     } catch (e) {
       return 'Error: $e';
@@ -992,15 +1528,37 @@ class FirestoreService {
   }
 
   // Complete a trip when student taps out
-  Future<String?> completeStudentTrip(String deviceId) async {
+  Future<String?> completeStudentTrip(
+    String deviceId, {
+    String? studentUid,
+  }) async {
     try {
-      // Find active trip
-      final snapshot = await _firestore
-          .collection('student_trips')
-          .where('deviceId', isEqualTo: deviceId)
-          .where('status', isEqualTo: 'active')
-          .limit(1)
-          .get();
+      QuerySnapshot<Map<String, dynamic>> snapshot;
+
+      if (studentUid != null && studentUid.isNotEmpty) {
+        snapshot = await _firestore
+            .collection('student_trips')
+            .where('studentUid', isEqualTo: studentUid)
+            .where('status', isEqualTo: 'active')
+            .limit(1)
+            .get();
+
+        if (snapshot.docs.isEmpty) {
+          snapshot = await _firestore
+              .collection('student_trips')
+              .where('deviceId', isEqualTo: deviceId)
+              .where('status', isEqualTo: 'active')
+              .limit(1)
+              .get();
+        }
+      } else {
+        snapshot = await _firestore
+            .collection('student_trips')
+            .where('deviceId', isEqualTo: deviceId)
+            .where('status', isEqualTo: 'active')
+            .limit(1)
+            .get();
+      }
 
       if (snapshot.docs.isEmpty) {
         return null; // No active trip, that's okay
@@ -1022,14 +1580,37 @@ class FirestoreService {
   }
 
   // Get device's active trip
-  Future<StudentTrip?> getActiveTrip(String deviceId) async {
+  Future<StudentTrip?> getActiveTrip(
+    String deviceId, {
+    String? studentUid,
+  }) async {
     try {
-      final snapshot = await _firestore
-          .collection('student_trips')
-          .where('deviceId', isEqualTo: deviceId)
-          .where('status', isEqualTo: 'active')
-          .limit(1)
-          .get();
+      QuerySnapshot<Map<String, dynamic>> snapshot;
+
+      if (studentUid != null && studentUid.isNotEmpty) {
+        snapshot = await _firestore
+            .collection('student_trips')
+            .where('studentUid', isEqualTo: studentUid)
+            .where('status', isEqualTo: 'active')
+            .limit(1)
+            .get();
+
+        if (snapshot.docs.isEmpty) {
+          snapshot = await _firestore
+              .collection('student_trips')
+              .where('deviceId', isEqualTo: deviceId)
+              .where('status', isEqualTo: 'active')
+              .limit(1)
+              .get();
+        }
+      } else {
+        snapshot = await _firestore
+            .collection('student_trips')
+            .where('deviceId', isEqualTo: deviceId)
+            .where('status', isEqualTo: 'active')
+            .limit(1)
+            .get();
+      }
 
       if (snapshot.docs.isNotEmpty) {
         return StudentTrip.fromMap(snapshot.docs.first.data());
@@ -1041,16 +1622,21 @@ class FirestoreService {
   }
 
   // Stream device's trips (active first, then past trips)
-  Stream<List<StudentTrip>> streamStudentTrips(String deviceId) {
-    return _firestore
-        .collection('student_trips')
-        .where('deviceId', isEqualTo: deviceId)
-        .snapshots()
-        .map((snapshot) {
+  Stream<List<StudentTrip>> streamStudentTrips(
+    String deviceId, {
+    String? studentUid,
+  }) {
+    return _firestore.collection('student_trips').snapshots().map((snapshot) {
       final trips = snapshot.docs
           .map((doc) => StudentTrip.fromMap(doc.data()))
-          .toList();
-      
+          .where((trip) {
+        final matchesUid = studentUid != null &&
+            studentUid.isNotEmpty &&
+            trip.studentUid == studentUid;
+        final matchesDevice = trip.deviceId == deviceId;
+        return matchesUid || matchesDevice;
+      }).toList();
+
       // Sort in Dart: active trips first, then by boardedAt descending
       trips.sort((a, b) {
         // Active trips come first
@@ -1059,7 +1645,7 @@ class FirestoreService {
         // Then sort by boardedAt (newest first)
         return b.boardedAt.compareTo(a.boardedAt);
       });
-      
+
       return trips;
     });
   }
@@ -1067,7 +1653,8 @@ class FirestoreService {
   // Get a single trip by ID
   Future<StudentTrip?> getStudentTrip(String tripId) async {
     try {
-      final doc = await _firestore.collection('student_trips').doc(tripId).get();
+      final doc =
+          await _firestore.collection('student_trips').doc(tripId).get();
       if (doc.exists) {
         return StudentTrip.fromMap(doc.data()!);
       }
@@ -1083,8 +1670,7 @@ class FirestoreService {
   /// Falls back to an empty map if the collection is missing or on error.
   Future<Map<String, Map<String, String>>> getNotificationTemplates() async {
     try {
-      final snap =
-          await _firestore.collection('notification_templates').get();
+      final snap = await _firestore.collection('notification_templates').get();
       return {
         for (final doc in snap.docs)
           doc.id: {
@@ -1124,10 +1710,11 @@ class FirestoreService {
     return _firestore
         .collection('student_trips')
         .where('status', isEqualTo: 'completed')
-        .where('offBoardedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-        .where('offBoardedAt', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+        .where('offBoardedAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('offBoardedAt',
+            isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
         .snapshots()
         .map((snapshot) => snapshot.docs.length);
   }
 }
-

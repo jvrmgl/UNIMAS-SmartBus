@@ -2,28 +2,44 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/device_service.dart';
 import '../services/firestore_service.dart';
 
 class AuthProvider extends ChangeNotifier {
-  final AuthService _authService = AuthService();
-  final FirestoreService _firestoreService = FirestoreService();
+  AuthProvider({
+    AuthService? authService,
+    FirestoreService? firestoreService,
+    DeviceService? deviceService,
+    bool autoInitialize = true,
+  })  : _authService = authService ?? AuthService(),
+        _firestoreService = firestoreService ?? FirestoreService(),
+        _deviceService = deviceService ?? DeviceService() {
+    if (autoInitialize) {
+      _initializeAuth();
+    }
+  }
+
+  final AuthService _authService;
+  final FirestoreService _firestoreService;
+  final DeviceService _deviceService;
 
   User? _currentUser;
   firebase_auth.User? _firebaseUser;
   bool _isLoading = false;
   bool _isInitialized = false;
+  bool _requiresDeviceTransfer = false;
+  bool _requiresEmailVerification = false;
   String? _error;
 
   User? get currentUser => _currentUser;
   firebase_auth.User? get firebaseUser => _firebaseUser;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  bool get isAuthenticated => _firebaseUser != null && _isInitialized;
+  bool get isAuthenticated =>
+      _firebaseUser != null && _currentUser != null && _isInitialized;
   bool get isInitialized => _isInitialized;
-
-  AuthProvider() {
-    _initializeAuth();
-  }
+  bool get requiresDeviceTransfer => _requiresDeviceTransfer;
+  bool get requiresEmailVerification => _requiresEmailVerification;
 
   Future<User?> _loadUserProfileWithRetry(String uid) async {
     User? profile;
@@ -44,12 +60,8 @@ class AuthProvider extends ChangeNotifier {
       _firebaseUser = firebaseUser;
       if (firebaseUser == null) {
         _currentUser = null;
-        // Keep guest UX login-free while still enforcing auth-based rules.
-        final anonReady = await _authService.signInAnonymouslyIfNeeded();
-        if (!anonReady) {
-          _isInitialized = true;
-          notifyListeners();
-        }
+        _isInitialized = true;
+        notifyListeners();
         return;
       }
 
@@ -73,37 +85,70 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
     required String fullName,
-    required String phoneNumber,
     required UserRole role,
   }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+
     _isLoading = true;
     _error = null;
+    _requiresDeviceTransfer = false;
+    _requiresEmailVerification = false;
     notifyListeners();
 
-    final result = await _authService.signUp(
-      email: email,
-      password: password,
-      fullName: fullName,
-      phoneNumber: phoneNumber,
-      role: role,
-    );
+    try {
+      if (role != UserRole.student) {
+        _error =
+            'Staff accounts are created by admin. Please contact administrator or sign in.';
+        return false;
+      }
 
-    _isLoading = false;
-    if (result != null) {
-      _error = result;
+      final isStaffEmail =
+          await _firestoreService.isEmailRegisteredAsStaff(normalizedEmail);
+      if (isStaffEmail) {
+        _error =
+            'This email has already been registered as a staff account. Please sign in with staff access.';
+        return false;
+      }
+
+      final result = await _authService.signUp(
+        email: normalizedEmail,
+        password: password,
+        fullName: fullName,
+        role: role,
+      );
+
+      if (result != null) {
+        _error = result;
+        return false;
+      }
+
+      if (role == UserRole.student) {
+        final verificationError =
+            await _authService.sendCurrentUserEmailVerification();
+        await _authService.signOut();
+        if (verificationError != null) {
+          _error =
+              'Account created, but failed to send verification email. Please try signing in to resend it.';
+          return true;
+        }
+      }
+
+      return true;
+    } finally {
+      _isLoading = false;
       notifyListeners();
-      return false;
     }
-    notifyListeners();
-    return true;
   }
 
   Future<bool> signIn({
     required String email,
     required String password,
+    bool allowDeviceTransfer = false,
   }) async {
     _isLoading = true;
     _error = null;
+    _requiresDeviceTransfer = false;
+    _requiresEmailVerification = false;
     notifyListeners();
 
     try {
@@ -129,11 +174,43 @@ class AuthProvider extends ChangeNotifier {
       if (profile == null) {
         _error =
             'Signed in, but unable to load your account profile. Check your internet connection and ensure this account exists in users collection.';
+        await _authService.signOut();
         return false;
+      }
+
+      if (profile.role == UserRole.student && !signedInUser.emailVerified) {
+        await _authService.sendCurrentUserEmailVerification();
+        await _authService.signOut();
+        _firebaseUser = null;
+        _currentUser = null;
+        _requiresEmailVerification = true;
+        _error =
+            'Please verify your email before signing in. A verification link has been sent to your inbox.';
+        return false;
+      }
+
+      if (profile.role == UserRole.student) {
+        final deviceId = await _deviceService.getDeviceId();
+        final bindingResult =
+            await _firestoreService.ensureStudentDeviceBinding(
+          uid: signedInUser.uid,
+          deviceId: deviceId,
+          allowTransfer: allowDeviceTransfer,
+        );
+        if (!bindingResult.isAllowed) {
+          await _authService.signOut();
+          _firebaseUser = null;
+          _currentUser = null;
+          _requiresDeviceTransfer = bindingResult.requiresTransfer;
+          _error = bindingResult.message ??
+              'This account cannot be used on this device.';
+          return false;
+        }
       }
 
       _firebaseUser = signedInUser;
       _currentUser = profile;
+      _error = null;
       return true;
     } catch (e) {
       _error = 'Sign-in failed: $e';
@@ -147,13 +224,14 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     await _authService.signOut();
     _currentUser = null;
+    _requiresDeviceTransfer = false;
+    _requiresEmailVerification = false;
     notifyListeners();
   }
 
   Future<bool> ensureUserProfile({
     required UserRole role,
     String? fullName,
-    String? phoneNumber,
   }) async {
     if (_firebaseUser == null) return false;
 
@@ -172,7 +250,6 @@ class AuthProvider extends ChangeNotifier {
       uid: uid,
       email: email,
       fullName: fallbackName.isEmpty ? 'User' : fallbackName,
-      phoneNumber: phoneNumber ?? '',
       role: role,
       createdAt: DateTime.now(),
     );
@@ -210,14 +287,12 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> updateProfile({
     String? fullName,
-    String? phoneNumber,
   }) async {
     if (_firebaseUser == null) return false;
 
     final result = await _authService.updateUserProfile(
       uid: _firebaseUser!.uid,
       fullName: fullName,
-      phoneNumber: phoneNumber,
     );
 
     if (result == null) {
@@ -251,7 +326,7 @@ class AuthProvider extends ChangeNotifier {
       currentPassword: currentPassword,
       newPassword: newPassword,
     );
-    
+
     if (result == null) {
       return true;
     } else {

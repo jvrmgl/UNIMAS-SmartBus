@@ -7,8 +7,17 @@ import '../services/firestore_service.dart';
 
 /// Manages driver shift state and location tracking
 class DriverShiftProvider extends ChangeNotifier {
-  final FirestoreService _firestoreService = FirestoreService();
-  final DriverTrackingService _trackingService = DriverTrackingService();
+  DriverShiftProvider({
+    FirestoreService? firestoreService,
+    DriverTrackingService? trackingService,
+    FirebaseFirestore? firestore,
+  })  : _firestoreService = firestoreService ?? FirestoreService(),
+        _trackingService = trackingService ?? DriverTrackingService(),
+        _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirestoreService _firestoreService;
+  final DriverTrackingService _trackingService;
+  final FirebaseFirestore _firestore;
 
   Bus? _assignedBus;
   bool _isOnShift = false;
@@ -140,7 +149,7 @@ class DriverShiftProvider extends ChangeNotifier {
       }
 
       // Update bus with driver assignment
-      await FirebaseFirestore.instance.collection('buses').doc(bus.busId).update({
+      await _firestore.collection('buses').doc(bus.busId).update({
         'driverId': _driverUid,
         'driverName': driverName,
       });
@@ -170,7 +179,7 @@ class DriverShiftProvider extends ChangeNotifier {
     }
 
     try {
-      await FirebaseFirestore.instance
+      await _firestore
           .collection('buses')
           .doc(_assignedBus!.busId)
           .update({
@@ -282,7 +291,7 @@ class DriverShiftProvider extends ChangeNotifier {
       String? deactivationError;
       try {
         await Future.wait([
-          FirebaseFirestore.instance
+          _firestore
               .collection('buses')
               .doc(_assignedBus!.busId)
               .update({
@@ -349,7 +358,7 @@ class DriverShiftProvider extends ChangeNotifier {
     if (_assignedBus == null) return;
 
     try {
-      final doc = await FirebaseFirestore.instance
+      final doc = await _firestore
           .collection('buses')
           .doc(_assignedBus!.busId)
           .get();

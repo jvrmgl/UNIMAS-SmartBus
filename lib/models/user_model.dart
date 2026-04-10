@@ -4,7 +4,6 @@ class User {
   final String uid;
   final String email;
   final String fullName;
-  final String phoneNumber;
   final UserRole role;
   final DateTime createdAt;
   final bool isActive;
@@ -13,7 +12,6 @@ class User {
     required this.uid,
     required this.email,
     required this.fullName,
-    required this.phoneNumber,
     required this.role,
     required this.createdAt,
     this.isActive = true,
@@ -24,8 +22,8 @@ class User {
     return {
       'uid': uid,
       'email': email,
+      'normalizedEmail': email.trim().toLowerCase(),
       'fullName': fullName,
-      'phoneNumber': phoneNumber,
       'role': role.toString().split('.').last,
       'createdAt': createdAt.toIso8601String(),
       'isActive': isActive,
@@ -38,7 +36,6 @@ class User {
       uid: map['uid'] as String,
       email: map['email'] as String,
       fullName: map['fullName'] as String,
-      phoneNumber: map['phoneNumber'] as String,
       role: UserRole.values.firstWhere(
         (role) => role.toString().split('.').last == map['role'],
         orElse: () => UserRole.student,
@@ -52,7 +49,6 @@ class User {
     String? uid,
     String? email,
     String? fullName,
-    String? phoneNumber,
     UserRole? role,
     DateTime? createdAt,
     bool? isActive,
@@ -61,7 +57,6 @@ class User {
       uid: uid ?? this.uid,
       email: email ?? this.email,
       fullName: fullName ?? this.fullName,
-      phoneNumber: phoneNumber ?? this.phoneNumber,
       role: role ?? this.role,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
@@ -79,15 +74,14 @@ class DriverProfile extends User {
     required super.uid,
     required super.email,
     required super.fullName,
-    required super.phoneNumber,
     required super.createdAt,
     required this.licenseNumber,
     required this.licenseExpiryDate,
     this.rating = 0.0,
     this.totalTrips = 0,
   }) : super(
-    role: UserRole.driver,
-  );
+          role: UserRole.driver,
+        );
 
   @override
   Map<String, dynamic> toMap() {
@@ -106,7 +100,6 @@ class DriverProfile extends User {
       uid: map['uid'] as String,
       email: map['email'] as String,
       fullName: map['fullName'] as String,
-      phoneNumber: map['phoneNumber'] as String,
       createdAt: DateTime.parse(map['createdAt'] as String),
       licenseNumber: map['licenseNumber'] as String,
       licenseExpiryDate: DateTime.parse(map['licenseExpiryDate'] as String),

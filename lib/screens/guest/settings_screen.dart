@@ -19,28 +19,14 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late TextEditingController _emailController;
-  late TextEditingController _passwordController;
-  bool _obscurePassword = true;
-  bool _isLoading = false;
-  bool _isAwaitingRoleRouting = false;
-  bool _isLoginExpanded = false;
-  AuthProvider? _authProviderRef;
-
-  static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-
   @override
   void initState() {
     super.initState();
-    _emailController = TextEditingController();
-    _passwordController = TextEditingController();
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _authProviderRef = context.read<AuthProvider>();
-      _authProviderRef!.addListener(_onAuthProviderChanged);
       context.read<AnnouncementProvider>().fetchAnnouncements();
-      final uid = _authProviderRef!.currentUser?.uid;
+      final uid = context.read<AuthProvider>().currentUser?.uid;
       if (uid != null) {
         context.read<NotificationPrefsProvider>().load(uid);
       }
@@ -49,86 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    _authProviderRef?.removeListener(_onAuthProviderChanged);
-    _emailController.dispose();
-    _passwordController.dispose();
     super.dispose();
-  }
-
-  void _onAuthProviderChanged() {
-    if (!_isAwaitingRoleRouting || !mounted) return;
-
-    final authProvider = context.read<AuthProvider>();
-    final user = authProvider.currentUser;
-    if (user == null) return;
-
-    _isAwaitingRoleRouting = false;
-    final userRole = user.role;
-
-    if (userRole == UserRole.driver) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/driver', (route) => false);
-    } else if (userRole == UserRole.admin) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false);
-    } else {
-      _showMessage('Access denied - Staff accounts only');
-      authProvider.signOut();
-    }
-  }
-
-  void _handleLogin() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-
-    if (email.isEmpty || password.isEmpty) {
-      _showMessage('Please fill in all fields');
-      return;
-    }
-
-    if (!_emailPattern.hasMatch(email)) {
-      _showMessage('Please enter a valid email address');
-      return;
-    }
-
-    if (mounted) {
-      setState(() => _isLoading = true);
-    }
-
-    try {
-      final authProvider = context.read<AuthProvider>();
-      var didTimeout = false;
-      final success = await authProvider
-          .signIn(
-            email: email,
-            password: password,
-          )
-          .timeout(
-            const Duration(seconds: 12),
-            onTimeout: () {
-              didTimeout = true;
-              return false;
-            },
-          );
-
-      if (!mounted) return;
-
-      if (success) {
-        _isAwaitingRoleRouting = true;
-        _onAuthProviderChanged();
-      } else {
-        if (didTimeout) {
-          _showMessage('Login is taking too long. Please check internet and try again.');
-        } else {
-          _showMessage(authProvider.error ?? 'Incorrect email or password.');
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage('Login failed. Please try again.');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
   }
 
   void _handleLogout() async {
@@ -152,9 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     notifPrefs.resetToDefaults();
 
     await authProvider.signOut();
-    _emailController.clear();
-    _passwordController.clear();
-    nav.pushNamedAndRemoveUntil('/guest', (route) => false);
+    nav.pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
   Widget _buildNotificationSettings({required bool isDriver}) {
@@ -209,12 +114,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
     );
   }
 
@@ -394,110 +293,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             );
-          } else {
-            // User is not logged in - show login form
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildNotificationSettings(isDriver: false),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('Appearance'),
-                  _buildThemeSetting(themeProvider),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('Staff Login'),
-                  Card(
-                    clipBehavior: Clip.hardEdge,
-                    child: ExpansionTile(
-                      leading: const Icon(Icons.badge_outlined),
-                      title: const Text(
-                        'For drivers and administrators',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: null,
-                      initiallyExpanded: _isLoginExpanded,
-                      onExpansionChanged: (expanded) {
-                        setState(() => _isLoginExpanded = expanded);
-                      },
-                      children: [
-                        const Divider(height: 1),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              TextField(
-                                controller: _emailController,
-                                enabled: !_isLoading,
-                                decoration: const InputDecoration(
-                                  labelText: 'Email Address',
-                                  prefixIcon: Icon(Icons.email_outlined),
-                                  hintText: 'Enter your email',
-                                ),
-                                keyboardType: TextInputType.emailAddress,
-                              ),
-                              const SizedBox(height: 16),
-                              TextField(
-                                controller: _passwordController,
-                                enabled: !_isLoading,
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  prefixIcon: const Icon(Icons.lock_outline),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_off_outlined
-                                          : Icons.visibility_outlined,
-                                    ),
-                                    onPressed: () => setState(
-                                        () => _obscurePassword = !_obscurePassword),
-                                  ),
-                                  hintText: 'Enter your password',
-                                ),
-                                obscureText: _obscurePassword,
-                              ),
-                              const SizedBox(height: 24),
-                              ElevatedButton(
-                                onPressed: _isLoading ? null : _handleLogin,
-                                style: ElevatedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                  Colors.white),
-                                        ),
-                                      )
-                                    : const Text('Login'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Text(
-                      'Students: No login needed, use the app as guest!',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontSize: 13,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-              ),
-            );
           }
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _buildNotificationSettings(isDriver: false),
+              const SizedBox(height: 24),
+              _buildSectionTitle('Appearance'),
+              _buildThemeSetting(themeProvider),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'You are not signed in.',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Please sign in to access account features.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context)
+                                .pushNamedAndRemoveUntil('/login', (route) => false);
+                          },
+                          child: const Text('Go to Login'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
         },
       ),
     );

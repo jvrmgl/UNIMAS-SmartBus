@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../models/student_trip_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../services/device_service.dart';
 import 'student_trip_detail_screen.dart';
@@ -16,6 +18,7 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final DeviceService _deviceService = DeviceService();
   String? _deviceId;
+  String? _studentUid;
 
   @override
   void initState() {
@@ -24,22 +27,38 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
   }
 
   Future<void> _loadDeviceId() async {
+    final authProvider = context.read<AuthProvider>();
     final deviceId = await _deviceService.getDeviceId();
+    final studentUid = authProvider.firebaseUser?.uid;
+
+    if (studentUid != null) {
+      await _firestoreService.reconcileStudentActiveState(
+        deviceId: deviceId,
+        studentUid: studentUid,
+      );
+    }
+
     if (mounted) {
-      setState(() => _deviceId = deviceId);
+      setState(() {
+        _deviceId = deviceId;
+        _studentUid = studentUid;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_deviceId == null) {
+    if (_deviceId == null || _studentUid == null) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
     return StreamBuilder<List<StudentTrip>>(
-      stream: _firestoreService.streamStudentTrips(_deviceId!),
+      stream: _firestoreService.streamStudentTrips(
+        _deviceId!,
+        studentUid: _studentUid,
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -65,9 +84,8 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.directions_bus_outlined, 
-                    size: 64, 
-                    color: Colors.grey[400]),
+                Icon(Icons.directions_bus_outlined,
+                    size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 16),
                 Text(
                   'No trips yet',
@@ -92,7 +110,8 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
 
         // Separate active and completed trips
         final activeTrips = trips.where((t) => t.status == 'active').toList();
-        final completedTrips = trips.where((t) => t.status == 'completed').toList();
+        final completedTrips =
+            trips.where((t) => t.status == 'completed').toList();
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -108,7 +127,8 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              ...activeTrips.map((trip) => _buildTripCard(trip, isActive: true)),
+              ...activeTrips
+                  .map((trip) => _buildTripCard(trip, isActive: true)),
               const SizedBox(height: 24),
             ],
 
@@ -123,7 +143,8 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              ...completedTrips.map((trip) => _buildTripCard(trip, isActive: false)),
+              ...completedTrips
+                  .map((trip) => _buildTripCard(trip, isActive: false)),
             ],
           ],
         );
@@ -137,7 +158,7 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: isActive 
+        side: isActive
             ? const BorderSide(color: Colors.green, width: 2)
             : BorderSide.none,
       ),
@@ -173,7 +194,7 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  
+
                   // Bus Info
                   Expanded(
                     child: Column(
@@ -222,7 +243,7 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
                       ],
                     ),
                   ),
-                  
+
                   // Forward Icon
                   Icon(
                     Icons.chevron_right,
@@ -230,11 +251,11 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 12),
               const Divider(height: 1),
               const SizedBox(height: 12),
-              
+
               // Route Info
               if (trip.routeName != null)
                 Padding(
@@ -255,7 +276,7 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
                     ],
                   ),
                 ),
-              
+
               // Time Info
               Row(
                 children: [
@@ -272,7 +293,7 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
                   ),
                 ],
               ),
-              
+
               // Duration (for completed trips)
               if (!isActive && trip.offBoardedAt != null) ...[
                 const SizedBox(height: 8),
@@ -300,7 +321,7 @@ class _StudentTripsScreenState extends State<StudentTripsScreen> {
 
   String _formatTripTime(StudentTrip trip) {
     final boardedTime = DateFormat('MMM dd, hh:mm a').format(trip.boardedAt);
-    
+
     if (trip.offBoardedAt != null) {
       final offBoardedTime = DateFormat('hh:mm a').format(trip.offBoardedAt!);
       return '$boardedTime - $offBoardedTime';

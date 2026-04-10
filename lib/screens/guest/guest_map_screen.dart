@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/bus_provider.dart';
@@ -91,8 +89,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             _destinationSuggestions = [];
           });
         } else {
-          Future.delayed(const Duration(milliseconds: 200),
-              () { if (mounted) setState(() => _originNearbyStops = []); });
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) setState(() => _originNearbyStops = []);
+          });
         }
       });
       _destinationFocusNode.addListener(() {
@@ -103,21 +102,22 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             _originSuggestions = [];
           });
         } else {
-          Future.delayed(const Duration(milliseconds: 200),
-              () { if (mounted) setState(() => _destinationNearbyStops = []); });
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) setState(() => _destinationNearbyStops = []);
+          });
         }
       });
     });
   }
 
   Future<void> _loadMarkerIcons() async {
-    final bus  = await MapMarkerHelper.getBusMarker();
+    final bus = await MapMarkerHelper.getBusMarker();
     final stop = await MapMarkerHelper.getStopMarker();
     final wait = await MapMarkerHelper.getWaitingStopMarker();
     if (mounted) {
       setState(() {
-        _busMarkerIcon       = bus;
-        _stopMarkerIcon      = stop;
+        _busMarkerIcon = bus;
+        _stopMarkerIcon = stop;
         _waitingStopMarkerIcon = wait;
       });
     }
@@ -125,12 +125,13 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
 
   void _onLocationChanged() {
     if (!mounted) return;
-    final pos   = _locationProviderRef?.currentPosition;
+    final pos = _locationProviderRef?.currentPosition;
     final stops = context.read<RouteProvider>().busStops;
     final prefs = context.read<NotificationPrefsProvider>();
     if (pos != null) {
-      context.read<SmartNotificationService>().onLocationUpdate(
-        pos, stops, prefs.autoDetectWaiting);
+      context
+          .read<SmartNotificationService>()
+          .onLocationUpdate(pos, stops, prefs.autoDetectWaiting);
     }
   }
 
@@ -189,8 +190,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     for (var stop in routeProvider.busStops) {
       final isWaitingHere = smartNotif.waitingStopId == stop.stopId;
       final icon = isWaitingHere
-          ? (_waitingStopMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange))
-          : (_stopMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen));
+          ? (_waitingStopMarkerIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange))
+          : (_stopMarkerIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen));
       markers.add(
         Marker(
           markerId: MarkerId('stop_${stop.stopId}'),
@@ -308,8 +311,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   }
 
   Future<LatLng?> _geocodeAddress(String address) async {
-    if (!AppConstants.enableGeocodingApi ||
-        AppConstants.googleMapsApiKey.isEmpty) {
+    if (!AppConstants.enableGeocodingApi) {
       return null;
     }
 
@@ -317,69 +319,28 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     if (trimmed.isEmpty) {
       return null;
     }
+    final location = await _firestoreService.searchPlaceCoordinates(trimmed);
+    if (location == null) return null;
 
-    final uri = Uri.https(
-      'maps.googleapis.com',
-      '/maps/api/geocode/json',
-      {
-        'address': trimmed,
-        'key': AppConstants.googleMapsApiKey,
-      },
-    );
+    final latitude = location['latitude'];
+    final longitude = location['longitude'];
+    if (latitude == null || longitude == null) return null;
 
-    final response = await http
-        .get(uri)
-        .timeout(const Duration(seconds: AppConstants.requestTimeoutSeconds));
-
-    if (response.statusCode != 200) {
-      return null;
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (data['status'] != 'OK') {
-      return null;
-    }
-
-    final result = (data['results'] as List).first as Map<String, dynamic>;
-    final location = result['geometry']['location'] as Map<String, dynamic>;
-    return LatLng(location['lat'] as double, location['lng'] as double);
+    return LatLng(latitude, longitude);
   }
 
   Future<List<String>> _fetchSuggestions(String input) async {
-    if (!AppConstants.enablePlacesAutocompleteApi ||
-        AppConstants.googleMapsApiKey.isEmpty) {
+    if (!AppConstants.enablePlacesAutocompleteApi) {
       return [];
     }
 
     final trimmed = input.trim();
     if (trimmed.length < 3) return [];
 
-    final uri = Uri.https(
-      'maps.googleapis.com',
-      '/maps/api/place/autocomplete/json',
-      {
-        'input': trimmed,
-        'key': AppConstants.googleMapsApiKey,
-        'components': 'country:my',
-        'location': '1.4655,110.3578',
-        'radius': '50000',
-      },
+    return _firestoreService.fetchPlaceAutocompleteSuggestions(
+      trimmed,
+      limit: 3,
     );
-
-    final response = await http
-        .get(uri)
-        .timeout(const Duration(seconds: AppConstants.requestTimeoutSeconds));
-
-    if (response.statusCode != 200) return [];
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (data['status'] != 'OK') return [];
-
-    final predictions = (data['predictions'] as List)
-        .map((item) => item['description'] as String)
-        .toList();
-
-    return predictions.take(3).toList();
   }
 
   void _onOriginChanged(String value) {
@@ -458,13 +419,12 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       return;
     }
 
-    final query = isOrigin
-        ? _originController.text
-        : _destinationController.text;
+    final query =
+        isOrigin ? _originController.text : _destinationController.text;
 
     final location = await _geocodeAddress(query);
     if (!mounted) return;
-    
+
     if (location == null) {
       _showMessage('Location not found. Try a more specific name.');
       return;
@@ -493,7 +453,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     });
 
     await _moveCamera(location);
-    if (mounted) _updateRouteSuggestions();
+    if (mounted) {
+      _updateRouteSuggestions();
+    }
   }
 
   void _showMessage(String message) {
@@ -537,20 +499,23 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     );
   }
 
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
     // Use Geolocator's built-in distance calculation (returns meters)
-    return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / 1000; // Convert to km
+    return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) /
+        1000; // Convert to km
   }
-  
-  List<BusStop> _findNearbyStops(double userLat, double userLon, List<BusStop> allStops) {
+
+  List<BusStop> _findNearbyStops(
+      double userLat, double userLon, List<BusStop> allStops) {
     final stopsWithDistance = allStops.map((stop) {
-      final distance = _calculateDistance(userLat, userLon, stop.latitude, stop.longitude);
+      final distance =
+          _calculateDistance(userLat, userLon, stop.latitude, stop.longitude);
       return {'stop': stop, 'distance': distance};
     }).toList();
 
-    stopsWithDistance.sort((a, b) => 
-      (a['distance'] as double).compareTo(b['distance'] as double)
-    );
+    stopsWithDistance.sort(
+        (a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
 
     return stopsWithDistance
         .take(5)
@@ -565,10 +530,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   ) {
     final active = allBuses.where((b) => b.isActive).toList()
       ..sort((a, b) {
-        final dA = _calculateDistance(
-            userLat, userLon, a.latitude, a.longitude);
-        final dB = _calculateDistance(
-            userLat, userLon, b.latitude, b.longitude);
+        final dA =
+            _calculateDistance(userLat, userLon, a.latitude, a.longitude);
+        final dB =
+            _calculateDistance(userLat, userLon, b.latitude, b.longitude);
         return dA.compareTo(dB);
       });
     return active.take(5).toList();
@@ -583,8 +548,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     }
     final allStops = context.read<RouteProvider>().busStops;
     // Show only the 3 closest stops
-    final nearbyStops =
-        _findNearbyStops(pos.latitude, pos.longitude, allStops).take(3).toList();
+    final nearbyStops = _findNearbyStops(pos.latitude, pos.longitude, allStops)
+        .take(3)
+        .toList();
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -613,9 +579,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                 )
               else
                 ...nearbyStops.map((stop) {
-                  final distance = _calculateDistance(
-                      pos.latitude, pos.longitude,
-                      stop.latitude, stop.longitude);
+                  final distance = _calculateDistance(pos.latitude,
+                      pos.longitude, stop.latitude, stop.longitude);
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: AppTheme.primaryColor,
@@ -646,15 +611,15 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     try {
       // Read providers before any async operations
       final locationProvider = context.read<LocationProvider>();
-      
+
       // Check and request permission if needed
       final hasPermission = await locationProvider.checkLocationPermission();
       if (!mounted) return;
-      
+
       if (!hasPermission) {
         final granted = await locationProvider.requestLocationPermission();
         if (!mounted) return;
-        
+
         if (!granted) {
           setState(() => _hasLocationPermission = false);
           _showMessage('Location permission denied');
@@ -669,7 +634,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       // Get current location
       await locationProvider.getCurrentLocation();
       if (!mounted) return;
-      
+
       final position = locationProvider.currentPosition;
 
       if (position == null) {
@@ -734,8 +699,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
               else
                 ...nearby.map((bus) {
                   final dist = _calculateDistance(
-                      pos.latitude, pos.longitude,
-                      bus.latitude, bus.longitude);
+                      pos.latitude, pos.longitude, bus.latitude, bus.longitude);
                   String? routeName;
                   try {
                     if (bus.assignedRoute != null) {
@@ -756,8 +720,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                           color: Colors.white, size: 18),
                     ),
                     title: Text('Bus ${bus.busNumber}',
-                        style:
-                            const TextStyle(fontWeight: FontWeight.bold)),
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(parts.join(' • ')),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () async {
@@ -828,16 +791,15 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: nearCap ? Colors.orange : Colors.green,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text('${bus.currentOccupancy}/${bus.capacity}',
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold)),
+                            color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -849,8 +811,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     const SizedBox(width: 6),
                     Text(routeName,
                         style: const TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.w500)),
+                            color: Colors.blue, fontWeight: FontWeight.w500)),
                   ],
                 ),
               ],
@@ -921,11 +882,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       double minTo = double.infinity;
       for (final stop in stops) {
         final dFrom = Geolocator.distanceBetween(
-            fromPos.latitude, fromPos.longitude,
-            stop.latitude, stop.longitude);
+            fromPos.latitude, fromPos.longitude, stop.latitude, stop.longitude);
         final dTo = Geolocator.distanceBetween(
-            toPos.latitude, toPos.longitude,
-            stop.latitude, stop.longitude);
+            toPos.latitude, toPos.longitude, stop.latitude, stop.longitude);
         if (dFrom < minFrom) minFrom = dFrom;
         if (dTo < minTo) minTo = dTo;
       }
@@ -1004,7 +963,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
         actions: [
           Consumer<AnnouncementProvider>(
             builder: (context, announcementProvider, _) {
-              final hasUnread = announcementProvider.hasVisibleAnnouncementsFor('student');
+              final hasUnread =
+                  announcementProvider.hasVisibleAnnouncementsFor('student');
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Stack(
@@ -1025,12 +985,12 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                             color: Colors.red,
                             shape: BoxShape.circle,
                           ),
-                        constraints: const BoxConstraints(
-                          minWidth: 8,
-                          minHeight: 8,
+                          constraints: const BoxConstraints(
+                            minWidth: 8,
+                            minHeight: 8,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               );
@@ -1043,7 +1003,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
           // Map
           Consumer3<BusProvider, RouteProvider, SmartNotificationService>(
             builder: (context, busProvider, routeProvider, smartNotif, _) {
-              final markers = _buildMarkers(busProvider, routeProvider, smartNotif);
+              final markers =
+                  _buildMarkers(busProvider, routeProvider, smartNotif);
               return GoogleMap(
                 onMapCreated: (controller) {
                   if (!_mapController.isCompleted) {
@@ -1122,11 +1083,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Padding(
-                          padding:
-                              EdgeInsets.only(left: 8, top: 4, bottom: 2),
+                          padding: EdgeInsets.only(left: 8, top: 4, bottom: 2),
                           child: Text('Nearby stops',
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.grey)),
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey)),
                         ),
                         ..._originNearbyStops.map((stop) => ListTile(
                               dense: true,
@@ -1142,14 +1102,19 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                                   _originSuggestions = [];
                                   _originMarker = Marker(
                                     markerId: const MarkerId('origin_search'),
-                                    position: LatLng(stop.latitude, stop.longitude),
-                                    infoWindow: InfoWindow(title: stop.stopName),
+                                    position:
+                                        LatLng(stop.latitude, stop.longitude),
+                                    infoWindow:
+                                        InfoWindow(title: stop.stopName),
                                     icon: BitmapDescriptor.defaultMarkerWithHue(
                                         BitmapDescriptor.hueAzure),
                                   );
                                 });
-                                await _moveCamera(LatLng(stop.latitude, stop.longitude));
-                                if (mounted) _updateRouteSuggestions();
+                                await _moveCamera(
+                                    LatLng(stop.latitude, stop.longitude));
+                                if (mounted) {
+                                  _updateRouteSuggestions();
+                                }
                               },
                             )),
                       ],
@@ -1185,7 +1150,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                       border: InputBorder.none,
                     ),
                     onTap: () {
-                      if (_destinationController.text.trim().length >= 3) return;
+                      if (_destinationController.text.trim().length >= 3) {
+                        return;
+                      }
                       final pos = _locationProviderRef?.currentPosition;
                       if (pos == null) return;
                       final stops = context.read<RouteProvider>().busStops;
@@ -1202,11 +1169,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Padding(
-                          padding:
-                              EdgeInsets.only(left: 8, top: 4, bottom: 2),
+                          padding: EdgeInsets.only(left: 8, top: 4, bottom: 2),
                           child: Text('Nearby stops',
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.grey)),
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey)),
                         ),
                         ..._destinationNearbyStops.map((stop) => ListTile(
                               dense: true,
@@ -1221,15 +1187,21 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                                   _destinationNearbyStops = [];
                                   _destinationSuggestions = [];
                                   _destinationMarker = Marker(
-                                    markerId: const MarkerId('destination_search'),
-                                    position: LatLng(stop.latitude, stop.longitude),
-                                    infoWindow: InfoWindow(title: stop.stopName),
+                                    markerId:
+                                        const MarkerId('destination_search'),
+                                    position:
+                                        LatLng(stop.latitude, stop.longitude),
+                                    infoWindow:
+                                        InfoWindow(title: stop.stopName),
                                     icon: BitmapDescriptor.defaultMarkerWithHue(
                                         BitmapDescriptor.hueViolet),
                                   );
                                 });
-                                await _moveCamera(LatLng(stop.latitude, stop.longitude));
-                                if (mounted) _updateRouteSuggestions();
+                                await _moveCamera(
+                                    LatLng(stop.latitude, stop.longitude));
+                                if (mounted) {
+                                  _updateRouteSuggestions();
+                                }
                               },
                             )),
                       ],
@@ -1252,29 +1224,28 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     ),
 
                   // ── Live status strip ──────────────────────────────────
-                  Consumer3<BusProvider, RouteProvider,
-                      LocationProvider>(
-                    builder: (context, busProvider,
-                        routeProvider, locationProvider, _) {
+                  Consumer3<BusProvider, RouteProvider, LocationProvider>(
+                    builder: (context, busProvider, routeProvider,
+                        locationProvider, _) {
                       final pos = locationProvider.currentPosition;
 
-                        // Keep chip count consistent with the bottom sheet list.
+                      // Keep chip count consistent with the bottom sheet list.
                       final nearbyBusCount = pos == null
                           ? 0
                           : _findNearestActiveBuses(
-                            pos.latitude,
-                            pos.longitude,
-                            busProvider.buses,
-                          ).length;
+                              pos.latitude,
+                              pos.longitude,
+                              busProvider.buses,
+                            ).length;
 
-                        // Keep chip count consistent with the bottom sheet list.
+                      // Keep chip count consistent with the bottom sheet list.
                       final nearbyStopCount = pos == null
                           ? 0
                           : _findNearbyStops(
-                            pos.latitude,
-                            pos.longitude,
-                            routeProvider.busStops,
-                          ).take(3).length;
+                              pos.latitude,
+                              pos.longitude,
+                              routeProvider.busStops,
+                            ).take(3).length;
 
                       return Column(
                         children: [
@@ -1346,8 +1317,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 8),
                             decoration: BoxDecoration(
-                              color: AppTheme.primaryColor
-                                  .withValues(alpha: 0.07),
+                              color:
+                                  AppTheme.primaryColor.withValues(alpha: 0.07),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                   color: AppTheme.primaryColor
@@ -1379,8 +1350,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                                       overflow: TextOverflow.ellipsis),
                                 ),
                                 Icon(Icons.arrow_forward_ios,
-                                    size: 13,
-                                    color: AppTheme.primaryColor),
+                                    size: 13, color: AppTheme.primaryColor),
                               ],
                             ),
                           ),
@@ -1405,7 +1375,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: _isDetectingLocation 
+                    color: _isDetectingLocation
                         ? Colors.grey
                         : AppTheme.primaryColor,
                     shape: BoxShape.circle,

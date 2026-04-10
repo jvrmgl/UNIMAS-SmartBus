@@ -99,7 +99,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                     children: [
                       Icon(Icons.people_outline,
                           size: 64,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(height: 16),
                       Text(
                         'No drivers registered',
@@ -112,7 +113,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                         'Drivers registered with the driver role appear here',
                         style: TextStyle(
                             fontSize: 14,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -139,7 +141,10 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                                   leading: CircleAvatar(
                                     backgroundColor: driver.isActive
                                         ? Theme.of(context).colorScheme.primary
-                                        : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant
+                                            .withValues(alpha: 0.5),
                                     child: Text(
                                       driver.fullName.isNotEmpty
                                           ? driver.fullName[0].toUpperCase()
@@ -161,30 +166,34 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
-                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text('Inactive',
-                                                style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .surfaceContainerHighest,
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: Text('Inactive',
+                                              style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant)),
                                         ),
                                     ],
                                   ),
                                   subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(driver.email),
-                                      if (driver.phoneNumber.isNotEmpty)
-                                        Text(driver.phoneNumber,
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color: Theme.of(context).colorScheme.onSurfaceVariant)),
                                       Text(
                                         'ID: ${driver.uid}',
                                         style: TextStyle(
                                             fontSize: 11,
-                                            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant
+                                                .withValues(alpha: 0.7)),
                                       ),
                                     ],
                                   ),
@@ -225,7 +234,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                                 ),
                                 // Action button row
                                 Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 0, 16, 12),
                                   child: SizedBox(
                                     width: double.infinity,
                                     child: ElevatedButton.icon(
@@ -246,7 +256,9 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                                       ),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: !hasAssignedBus
-                                            ? Theme.of(context).colorScheme.primary
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .primary
                                             : Colors.orange.shade700,
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
@@ -270,7 +282,6 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController(text: driver.fullName);
     final emailController = TextEditingController(text: driver.email);
-    final phoneController = TextEditingController(text: driver.phoneNumber);
 
     showDialog(
       context: context,
@@ -305,15 +316,6 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number (Optional)',
-                    prefixIcon: Icon(Icons.phone),
-                  ),
-                  keyboardType: TextInputType.phone,
-                ),
               ],
             ),
           ),
@@ -330,12 +332,11 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                   uid: driver.uid,
                   fullName: nameController.text.trim(),
                   email: emailController.text.trim(),
-                  phoneNumber: phoneController.text.trim(),
                 );
-                
+
                 if (!dialogContext.mounted) return;
                 Navigator.pop(dialogContext);
-                
+
                 if (!mounted) return;
                 if (error == null) {
                   _showSafeSnackBar(
@@ -373,138 +374,140 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-        title: const Text('Add New Driver'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    prefixIcon: Icon(Icons.person),
-                  ),
-                  validator: (value) =>
-                      value?.isEmpty ?? true ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value?.isEmpty ?? true) return 'Required';
-                    if (!_isValidEmail(value!)) return 'Invalid email format';
-                    if (!_isAllowedDriverEmailDomain(value)) {
-                      return 'Driver email must end with @unimas.my or @unimas.edu.my';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: passwordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Temporary Password',
-                    prefixIcon: Icon(Icons.lock),
-                  ),
-                  obscureText: true,
-                  validator: (value) {
-                    if (value?.isEmpty ?? true) return 'Required';
-                    if (value!.length < 6) return 'Min 6 characters';
-                    return null;
-                  },
-                ),
-                if (submitError != null) ...[
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      submitError!,
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
+          title: const Text('Add New Driver'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Full Name',
+                      prefixIcon: Icon(Icons.person),
                     ),
+                    validator: (value) =>
+                        value?.isEmpty ?? true ? 'Required' : null,
                   ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: emailController,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value?.isEmpty ?? true) return 'Required';
+                      if (!_isValidEmail(value!)) return 'Invalid email format';
+                      if (!_isAllowedDriverEmailDomain(value)) {
+                        return 'Driver email must end with @unimas.my or @unimas.edu.my';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: passwordController,
+                    decoration: const InputDecoration(
+                      labelText: 'Temporary Password',
+                      prefixIcon: Icon(Icons.lock),
+                    ),
+                    obscureText: true,
+                    validator: (value) {
+                      if (value?.isEmpty ?? true) return 'Required';
+                      if (value!.length < 6) return 'Min 6 characters';
+                      return null;
+                    },
+                  ),
+                  if (submitError != null) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        submitError!,
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: isCreating ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isCreating
+                  ? null
+                  : () async {
+                      if (formKey.currentState!.validate()) {
+                        setDialogState(() {
+                          isCreating = true;
+                          submitError = null;
+                        });
+
+                        AdminCreateUserResult result;
+                        try {
+                          result =
+                              await _authService.createUserAsAdminWithResult(
+                            email: emailController.text.trim(),
+                            password: passwordController.text.trim(),
+                            fullName: nameController.text.trim(),
+                            role: UserRole.driver,
+                          );
+                        } catch (e) {
+                          result = AdminCreateUserResult(
+                            error: 'Failed to create driver account: $e',
+                          );
+                        }
+
+                        if (!dialogContext.mounted) return;
+                        if (result.isSuccess && result.user != null) {
+                          if (mounted) {
+                            setState(() {
+                              _drivers = [
+                                result.user!,
+                                ..._drivers
+                                    .where((d) => d.uid != result.user!.uid),
+                              ];
+                            });
+                          }
+                          Navigator.pop(dialogContext);
+                          if (!mounted) return;
+                          _showSafeSnackBar(
+                            scaffoldContext,
+                            'Driver account created successfully',
+                            backgroundColor: Colors.green,
+                          );
+                          _refreshDriversSilently();
+                        } else {
+                          setDialogState(() {
+                            isCreating = false;
+                            submitError = result.error ??
+                                'Failed to create driver account';
+                          });
+                          _showSafeSnackBar(
+                            scaffoldContext,
+                            submitError!,
+                            backgroundColor: Colors.red,
+                          );
+                        }
+                      }
+                    },
+              child: isCreating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Create'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: isCreating ? null : () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: isCreating
-                ? null
-                : () async {
-              if (formKey.currentState!.validate()) {
-                setDialogState(() {
-                  isCreating = true;
-                  submitError = null;
-                });
-
-                AdminCreateUserResult result;
-                try {
-                  result = await _authService.createUserAsAdminWithResult(
-                    email: emailController.text.trim(),
-                    password: passwordController.text.trim(),
-                    fullName: nameController.text.trim(),
-                    phoneNumber: '',
-                    role: UserRole.driver,
-                  );
-                } catch (e) {
-                  result = AdminCreateUserResult(
-                    error: 'Failed to create driver account: $e',
-                  );
-                }
-
-                if (!dialogContext.mounted) return;
-                if (result.isSuccess && result.user != null) {
-                  if (mounted) {
-                    setState(() {
-                      _drivers = [
-                        result.user!,
-                        ..._drivers.where((d) => d.uid != result.user!.uid),
-                      ];
-                    });
-                  }
-                  Navigator.pop(dialogContext);
-                  if (!mounted) return;
-                  _showSafeSnackBar(
-                    scaffoldContext,
-                    'Driver account created successfully',
-                    backgroundColor: Colors.green,
-                  );
-                  _refreshDriversSilently();
-                } else {
-                  setDialogState(() {
-                    isCreating = false;
-                    submitError = result.error ?? 'Failed to create driver account';
-                  });
-                  _showSafeSnackBar(
-                    scaffoldContext,
-                    submitError!,
-                    backgroundColor: Colors.red,
-                  );
-                }
-              }
-            },
-            child: isCreating
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Create'),
-          ),
-        ],
-      ),
       ),
     );
   }
@@ -515,7 +518,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     final availableBuses = buses.where((bus) => bus.driverId == null).toList();
     final busProvider = context.read<BusProvider>();
 
-    String? selectedBusId = availableBuses.isNotEmpty ? availableBuses.first.busId : null;
+    String? selectedBusId =
+        availableBuses.isNotEmpty ? availableBuses.first.busId : null;
     bool isAssigning = false;
     showDialog(
       context: context,
@@ -540,7 +544,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                       .map(
                         (bus) => DropdownMenuItem<String>(
                           value: bus.busId,
-                          child: Text('Bus ${bus.busNumber} (${bus.registrationNumber})'),
+                          child: Text(
+                              'Bus ${bus.busNumber} (${bus.registrationNumber})'),
                         ),
                       )
                       .toList(),
@@ -552,11 +557,14 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: isAssigning ? null : () => Navigator.pop(dialogContext),
+              onPressed:
+                  isAssigning ? null : () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: isAssigning || availableBuses.isEmpty || selectedBusId == null
+              onPressed: isAssigning ||
+                      availableBuses.isEmpty ||
+                      selectedBusId == null
                   ? null
                   : () async {
                       setDialogState(() => isAssigning = true);
@@ -576,7 +584,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                       _showSafeSnackBar(
                         scaffoldContext,
                         error ?? 'Bus assigned to ${driver.fullName}',
-                        backgroundColor: error == null ? Colors.green : Colors.red,
+                        backgroundColor:
+                            error == null ? Colors.green : Colors.red,
                       );
                       if (error == null) {
                         busProvider.updateBusInList(
@@ -610,7 +619,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
     final scaffoldContext = context;
     final busProvider = context.read<BusProvider>();
     final buses = busProvider.buses;
-    final assignedBus = buses.where((b) => b.driverId == driver.uid).firstOrNull;
+    final assignedBus =
+        buses.where((b) => b.driverId == driver.uid).firstOrNull;
 
     if (assignedBus == null) {
       _showSafeSnackBar(
@@ -627,94 +637,96 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-        title: const Text('Unassign Bus'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Remove Bus ${assignedBus.busNumber} (${assignedBus.registrationNumber}) from ${driver.fullName}?',
-            ),
-            if (isOnActiveShift) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  border: Border.all(color: Colors.orange.shade300),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.warning_amber_rounded,
-                        color: Colors.orange.shade700, size: 18),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'This bus is currently on an active shift. Unassigning will end the shift and take the bus offline.',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
+          title: const Text('Unassign Bus'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Remove Bus ${assignedBus.busNumber} (${assignedBus.registrationNumber}) from ${driver.fullName}?',
               ),
+              if (isOnActiveShift) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    border: Border.all(color: Colors.orange.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Colors.orange.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'This bus is currently on an active shift. Unassigning will end the shift and take the bus offline.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
+          ),
+          actions: [
+            TextButton(
+              onPressed:
+                  isUnassigning ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isUnassigning
+                  ? null
+                  : () async {
+                      setDialogState(() => isUnassigning = true);
+                      final navigator = Navigator.of(dialogContext);
+
+                      final error = await _firestoreService
+                          .removeDriverFromBus(assignedBus.busId);
+
+                      if (!dialogContext.mounted) return;
+                      navigator.pop();
+                      if (!mounted) return;
+
+                      _showSafeSnackBar(
+                        scaffoldContext,
+                        error ??
+                            'Bus ${assignedBus.busNumber} unassigned from ${driver.fullName}',
+                        backgroundColor:
+                            error == null ? Colors.green : Colors.red,
+                      );
+                      if (error == null) {
+                        busProvider.updateBusInList(
+                          assignedBus.copyWith(
+                            driverId: null,
+                            driverName: null,
+                            isActive: false,
+                            currentOccupancy: 0,
+                            lastUpdated: DateTime.now(),
+                          ),
+                        );
+                        _refreshDriversSilently();
+                        busProvider.fetchBuses();
+                      } else {
+                        setDialogState(() => isUnassigning = false);
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade700,
+                  foregroundColor: Colors.white),
+              child: isUnassigning
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Unassign'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: isUnassigning ? null : () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: isUnassigning
-                ? null
-                : () async {
-              setDialogState(() => isUnassigning = true);
-              final navigator = Navigator.of(dialogContext);
-
-              final error = await _firestoreService
-                  .removeDriverFromBus(assignedBus.busId);
-
-              if (!dialogContext.mounted) return;
-              navigator.pop();
-              if (!mounted) return;
-
-              _showSafeSnackBar(
-                scaffoldContext,
-                error ??
-                    'Bus ${assignedBus.busNumber} unassigned from ${driver.fullName}',
-                backgroundColor: error == null ? Colors.green : Colors.red,
-              );
-              if (error == null) {
-                busProvider.updateBusInList(
-                  assignedBus.copyWith(
-                    driverId: null,
-                    driverName: null,
-                    isActive: false,
-                    currentOccupancy: 0,
-                    lastUpdated: DateTime.now(),
-                  ),
-                );
-                _refreshDriversSilently();
-                busProvider.fetchBuses();
-              } else {
-                setDialogState(() => isUnassigning = false);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange.shade700,
-                foregroundColor: Colors.white),
-            child: isUnassigning
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Unassign'),
-          ),
-        ],
-      ),
       ),
     );
   }
@@ -734,7 +746,8 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final authDeleteError = await _authService.deleteUserAuthByUidAsAdmin(driver.uid);
+              final authDeleteError =
+                  await _authService.deleteUserAuthByUidAsAdmin(driver.uid);
 
               final error = authDeleteError ??
                   await _firestoreService.deleteUserProfile(driver.uid);
@@ -752,8 +765,7 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                 _loadDrivers();
               }
             },
-            style:
-                ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
