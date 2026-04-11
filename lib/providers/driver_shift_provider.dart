@@ -21,6 +21,8 @@ class DriverShiftProvider extends ChangeNotifier {
 
   Bus? _assignedBus;
   bool _isOnShift = false;
+  bool _isStartingShift = false;
+  bool _isAutoStartingShift = false;
   String? _error;
   String? _driverUid;
   StreamSubscription<Bus?>? _assignedBusSubscription;
@@ -60,7 +62,15 @@ class DriverShiftProvider extends ChangeNotifier {
   /// calling setBusActiveStatus (it's already true in Firestore).
   /// Guards against racing with the driver's own [startShift] call.
   Future<void> _autoStartShift() async {
-    if (_assignedBus == null || _isOnShift || _trackingService.isTracking) return;
+    if (_assignedBus == null ||
+        _isOnShift ||
+        _trackingService.isTracking ||
+        _isStartingShift ||
+        _isAutoStartingShift) {
+      return;
+    }
+
+    _isAutoStartingShift = true;
     try {
       await _trackingService.startTracking(
         busId: _assignedBus!.busId,
@@ -76,6 +86,8 @@ class DriverShiftProvider extends ChangeNotifier {
     } catch (e) {
       _error = 'Failed to auto-start shift: $e';
       notifyListeners();
+    } finally {
+      _isAutoStartingShift = false;
     }
   }
 
@@ -207,9 +219,15 @@ class DriverShiftProvider extends ChangeNotifier {
       return false;
     }
 
+    if (_isStartingShift || _isAutoStartingShift) {
+      return _isOnShift || _trackingService.isTracking;
+    }
+
     if (_isOnShift) {
       return true; // Already on shift
     }
+
+    _isStartingShift = true;
 
     // Optimistic: mark as on-shift NOW so the incoming Firestore stream event
     // (from setBusActiveStatus below) won't trigger _autoStartShift in parallel.
@@ -271,6 +289,8 @@ class DriverShiftProvider extends ChangeNotifier {
       } catch (_) {}
       notifyListeners();
       return false;
+    } finally {
+      _isStartingShift = false;
     }
   }
 

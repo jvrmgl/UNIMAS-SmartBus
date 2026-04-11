@@ -10,6 +10,7 @@ class DriverTrackingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   StreamSubscription<Position>? _positionSubscription;
   bool _isTracking = false;
+  bool _isStarting = false;
   String? _currentBusId;
 
   bool get isTracking => _isTracking;
@@ -22,20 +23,27 @@ class DriverTrackingService {
     int updateIntervalSeconds = 10,
     Function(String error)? onError,
   }) async {
+    if (_isStarting) {
+      debugPrint('⏳ Tracking start already in progress for bus $_currentBusId');
+      return;
+    }
+
     // Prevent multiple tracking instances
     if (_isTracking && _currentBusId == busId) {
       debugPrint('⚠️ Tracking already active for bus $busId');
       return;
     }
 
-    // Stop any existing tracking first
-    if (_isTracking) {
-      debugPrint('🛑 Stopping previous tracking before starting new one');
-      stopTracking();
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
+    _isStarting = true;
 
     try {
+      // Stop any existing tracking first
+      if (_isTracking) {
+        debugPrint('🛑 Stopping previous tracking before starting new one');
+        stopTracking();
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
       // Check if location services are enabled
       final serviceEnabled = await LocationService.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -94,6 +102,8 @@ class DriverTrackingService {
       _isTracking = false;
       _currentBusId = null;
       onError?.call('Failed to start tracking: $e');
+    } finally {
+      _isStarting = false;
     }
   }
 
