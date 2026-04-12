@@ -2,276 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/announcement_provider.dart';
 
-// ── Loading Widget ────────────────────────────────────────────────────────────
-class LoadingWidget extends StatelessWidget {
-  final String? message;
-  final double size;
-
-  const LoadingWidget({
-    super.key,
-    this.message,
-    this.size = 40,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: size,
-            height: size,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              message!,
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// ── Empty State Widget ────────────────────────────────────────────────────────
-class EmptyStateWidget extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final VoidCallback? onRetry;
-
-  const EmptyStateWidget({
-    super.key,
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 40, color: cs.primary.withValues(alpha: 0.6)),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                subtitle!,
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            ],
-            if (onRetry != null) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Retry'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Error Widget ──────────────────────────────────────────────────────────────
-class AppErrorWidget extends StatelessWidget {
-  final String error;
-  final VoidCallback? onRetry;
-
-  const AppErrorWidget({
-    super.key,
-    required this.error,
-    this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: cs.error.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.error_outline, size: 40, color: cs.error.withValues(alpha: 0.7)),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Something went wrong',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              error,
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Retry'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Custom App Bar ────────────────────────────────────────────────────────────
-class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final String title;
-  final bool showBackButton;
-  final List<Widget>? actions;
-  final VoidCallback? onBackPressed;
-  final Color? backgroundColor;
-
-  const CustomAppBar({
-    super.key,
-    required this.title,
-    this.showBackButton = true,
-    this.actions,
-    this.onBackPressed,
-    this.backgroundColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AppBar(
-      title: Text(title),
-      backgroundColor: backgroundColor,
-      elevation: 0,
-      leading: showBackButton
-          ? IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: onBackPressed ?? () => Navigator.pop(context),
-            )
-          : null,
-      actions: actions,
-    );
-  }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
-}
-
-// ── Rating Bar ────────────────────────────────────────────────────────────────
-class RatingBar extends StatelessWidget {
-  final double rating;
-  final int maxRating;
-  final Color color;
-  final double size;
-  final bool isReadOnly;
-  final Function(double)? onRatingChanged;
-
-  const RatingBar({
-    super.key,
-    this.rating = 0.0,
-    this.maxRating = 5,
-    this.color = const Color(0xFFFFC107),
-    this.size = 24,
-    this.isReadOnly = true,
-    this.onRatingChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(
-        maxRating,
-        (index) => GestureDetector(
-          onTap: isReadOnly ? null : () => onRatingChanged?.call(index + 1.0),
-          child: Icon(
-            index < rating ? Icons.star : Icons.star_border,
-            color: color,
-            size: size,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Custom Card ───────────────────────────────────────────────────────────────
-class CustomCard extends StatelessWidget {
-  final Widget child;
-  final VoidCallback? onTap;
-  final EdgeInsets padding;
-  final Color? backgroundColor;
-  final double borderRadius;
-  final double elevation;
-
-  const CustomCard({
-    super.key,
-    required this.child,
-    this.onTap,
-    this.padding = const EdgeInsets.all(16),
-    this.backgroundColor,
-    this.borderRadius = 16,
-    this.elevation = 0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: elevation,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(borderRadius)),
-      color: backgroundColor,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: Padding(
-          padding: padding,
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
 // ── Fade + Slide Entrance Animation ──────────────────────────────────────────
 /// Wraps [child] in a fade-and-slide-up entrance animation.
 /// [delay] staggers the animation when building lists.
@@ -333,64 +63,6 @@ class _FadeSlideInState extends State<FadeSlideIn>
 
 // ── Shimmer Placeholder ───────────────────────────────────────────────────────
 /// A simple animated shimmer placeholder for loading states.
-class ShimmerBox extends StatefulWidget {
-  final double? width;
-  final double height;
-  final double borderRadius;
-
-  const ShimmerBox({
-    super.key,
-    this.width,
-    this.height = 16,
-    this.borderRadius = 8,
-  });
-
-  @override
-  State<ShimmerBox> createState() => _ShimmerBoxState();
-}
-
-class _ShimmerBoxState extends State<ShimmerBox>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Container(
-        width: widget.width,
-        height: widget.height,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(widget.borderRadius),
-          color: Color.lerp(
-            isDark ? const Color(0xFF2C2C2E) : const Color(0xFFEEF0F3),
-            isDark ? const Color(0xFF3A3A3C) : const Color(0xFFF8F9FA),
-            _anim.value,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ── Modern Notifications Bottom Sheet ────────────────────────────────────────
 /// Shows a modern, dynamically-sized notifications panel as a bottom sheet.
 /// [role] is one of 'admin', 'driver', 'student'.
@@ -474,7 +146,8 @@ class _NotificationsSheet extends StatelessWidget {
                     if (hasItems)
                       TextButton.icon(
                         onPressed: () async {
-                          await announcementProvider.clearAnnouncementsFor(role);
+                          await announcementProvider
+                              .clearAnnouncementsFor(role);
                           if (!context.mounted) return;
                           Navigator.pop(context);
                         },
@@ -482,7 +155,8 @@ class _NotificationsSheet extends StatelessWidget {
                         label: const Text('Clear all'),
                         style: TextButton.styleFrom(
                           foregroundColor: cs.error,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                         ),
                       ),
                   ],
@@ -500,11 +174,13 @@ class _NotificationsSheet extends StatelessWidget {
                 )
               else if (!hasItems)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
                   child: Row(
                     children: [
                       Icon(Icons.inbox_outlined,
-                          size: 32, color: cs.onSurface.withValues(alpha: 0.25)),
+                          size: 32,
+                          color: cs.onSurface.withValues(alpha: 0.25)),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Text(
@@ -528,7 +204,8 @@ class _NotificationsSheet extends StatelessWidget {
                         delay: Duration(milliseconds: i * 50),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                            color: cs.surfaceContainerHighest
+                                .withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: cs.outlineVariant),
                           ),

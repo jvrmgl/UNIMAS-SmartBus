@@ -67,8 +67,6 @@ class User {
 class DriverProfile extends User {
   final String licenseNumber;
   final DateTime licenseExpiryDate;
-  final double rating;
-  final int totalTrips;
 
   DriverProfile({
     required super.uid,
@@ -77,8 +75,6 @@ class DriverProfile extends User {
     required super.createdAt,
     required this.licenseNumber,
     required this.licenseExpiryDate,
-    this.rating = 0.0,
-    this.totalTrips = 0,
   }) : super(
           role: UserRole.driver,
         );
@@ -89,8 +85,6 @@ class DriverProfile extends User {
     baseMap.addAll({
       'licenseNumber': licenseNumber,
       'licenseExpiryDate': licenseExpiryDate.toIso8601String(),
-      'rating': rating,
-      'totalTrips': totalTrips,
     });
     return baseMap;
   }
@@ -103,8 +97,6 @@ class DriverProfile extends User {
       createdAt: DateTime.parse(map['createdAt'] as String),
       licenseNumber: map['licenseNumber'] as String,
       licenseExpiryDate: DateTime.parse(map['licenseExpiryDate'] as String),
-      rating: (map['rating'] as num?)?.toDouble() ?? 0.0,
-      totalTrips: map['totalTrips'] as int? ?? 0,
     );
   }
 }
