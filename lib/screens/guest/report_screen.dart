@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/report_model.dart';
+import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
@@ -126,8 +127,14 @@ class _ReportScreenState extends State<ReportScreen>
       return;
     }
 
-    setState(() => _isSubmitting = true);
     final authProvider = context.read<AuthProvider>();
+    final role = authProvider.currentUser?.role;
+    if (role != UserRole.student) {
+      _showMessage('Only student accounts can submit reports.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
 
     final reporterUid = await _getReporterUid();
     if (reporterUid == null) {

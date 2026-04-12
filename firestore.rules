@@ -22,6 +22,10 @@ service cloud.firestore {
       return isSignedIn() && (userRole() == 'admin' || userRole() == 'driver');
     }
 
+    function isStudent() {
+      return isSignedIn() && userRole() == 'student';
+    }
+
     function isReportOwner(reportId) {
       return isSignedIn() &&
         get(/databases/$(database)/documents/reports/$(reportId)).data.reporterUid == request.auth.uid;
@@ -102,18 +106,18 @@ service cloud.firestore {
       // For report documents themselves, use resource.data so owner queries
       // (e.g. where reporterUid == current uid) are authorized correctly.
       allow read: if isAdmin() || (
-        isSignedIn() &&
+        isStudent() &&
         resource.data.reporterUid == request.auth.uid
       );
-      allow create: if isSignedIn() &&
+      allow create: if isStudent() &&
         request.resource.data.reporterUid == request.auth.uid;
       allow update, delete: if isAdmin();
 
       match /messages/{messageId} {
-        allow read: if isAdmin() || isReportOwner(reportId);
+        allow read: if isAdmin() || (isStudent() && isReportOwner(reportId));
         allow create: if isSignedIn() &&
           request.resource.data.senderId == request.auth.uid &&
-          (isAdmin() || isReportOwner(reportId));
+          (isAdmin() || (isStudent() && isReportOwner(reportId)));
         allow update, delete: if isAdmin();
       }
     }
