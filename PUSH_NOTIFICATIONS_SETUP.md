@@ -126,7 +126,7 @@ Android 8.0+ requires notification channels. These are auto-created by Firebase 
    ```
 4. Check FCM token is generated:
    ```dart
-   String? token = await NotificationService().getFCMToken();
+  String? token = await FirebaseMessaging.instance.getToken();
    print('FCM Token: $token');
    ```
 

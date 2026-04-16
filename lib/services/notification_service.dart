@@ -156,14 +156,6 @@ class NotificationService {
     _isInitialized = true;
   }
 
-  Future<void> disposeNotifications() async {
-    await _onMessageSubscription?.cancel();
-    await _onMessageOpenedAppSubscription?.cancel();
-    _onMessageSubscription = null;
-    _onMessageOpenedAppSubscription = null;
-    _isInitialized = false;
-  }
-
   /// Navigate to the appropriate screen based on the notification type.
   void _handleMessageNavigation(RemoteMessage message) {
     final type = message.data['type'] as String? ?? '';
@@ -175,11 +167,6 @@ class NotificationService {
         (route) => false,
       );
     }
-  }
-
-  // Get FCM token
-  Future<String?> getFCMToken() async {
-    return await _firebaseMessaging.getToken();
   }
 
   /// Persist the device FCM token to Firestore so Cloud Functions can send
@@ -225,32 +212,6 @@ class NotificationService {
     }
   }
 
-  /// Show a local push notification on the bus_updates channel.
-  /// Called when the app receives a foreground FCM message from the smart-
-  /// notification Cloud Functions.
-  Future<void> showSmartNotification(String title, String body) async {
-    await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'bus_updates',
-          'Bus Updates',
-          channelDescription: 'Approaching bus, tap-out reminders, and shift alerts',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: false,
-          presentSound: true,
-        ),
-      ),
-    );
-  }
-
   // Subscribe to topic
   Future<void> subscribeToTopic(String topic) async {
     await _firebaseMessaging.subscribeToTopic(topic);
@@ -267,18 +228,8 @@ class NotificationService {
     }
   }
 
-  // Subscribe to route notifications
-  Future<void> subscribeToRoute(String routeId) async {
-    await subscribeToTopic('route_$routeId');
-  }
-
   // Subscribe to bus announcements
   Future<void> subscribeToBusAnnouncements() async {
     await subscribeToTopic('announcements');
-  }
-
-  // Subscribe to service notifications
-  Future<void> subscribeToServiceNotifications() async {
-    await subscribeToTopic('service_notifications');
   }
 }

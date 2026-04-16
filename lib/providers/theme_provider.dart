@@ -11,9 +11,4 @@ class ThemeProvider extends ChangeNotifier {
     _themeMode = mode;
     notifyListeners();
   }
-
-  // Legacy helper — kept so any code still calling setDarkMode continues working.
-  void setDarkMode(bool enabled) {
-    setThemeMode(enabled ? ThemeMode.dark : ThemeMode.light);
-  }
 }

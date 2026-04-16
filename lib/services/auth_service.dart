@@ -141,13 +141,6 @@ class AuthService {
     }
   }
 
-  Future<bool> reloadAndCheckEmailVerified() async {
-    final user = _auth.currentUser;
-    if (user == null) return false;
-    await user.reload();
-    return _auth.currentUser?.emailVerified ?? false;
-  }
-
   // Sign out
   Future<void> signOut() async {
     await _auth.signOut();
@@ -222,32 +215,6 @@ class AuthService {
     }
   }
 
-  // Check if user exists
-  Future<bool> userExists(String uid) async {
-    try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      return doc.exists;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Admin: create a user account without affecting the currently signed-in admin session
-  Future<String?> createUserAsAdmin({
-    required String email,
-    required String password,
-    required String fullName,
-    required UserRole role,
-  }) async {
-    final result = await createUserAsAdminWithResult(
-      email: email,
-      password: password,
-      fullName: fullName,
-      role: role,
-    );
-    return result.error;
-  }
-
   // Admin: create a user account and return the created user profile so UI can
   // update immediately without waiting for a full list reload.
   Future<AdminCreateUserResult> createUserAsAdminWithResult({
@@ -295,48 +262,6 @@ class AuthService {
       );
     } catch (e) {
       return AdminCreateUserResult(error: 'Error: ${e.toString()}');
-    } finally {
-      try {
-        await secondaryAuth?.signOut();
-      } catch (_) {}
-      try {
-        await secondaryApp?.delete();
-      } catch (_) {}
-    }
-  }
-
-  // Delete a Firebase Auth account by re-authenticating with user credentials
-  Future<String?> deleteUserAccountWithReauth({
-    required String email,
-    required String password,
-  }) async {
-    FirebaseApp? secondaryApp;
-    firebase_auth.FirebaseAuth? secondaryAuth;
-
-    try {
-      final appName = 'adminDelete_${DateTime.now().microsecondsSinceEpoch}';
-      secondaryApp = await Firebase.initializeApp(
-        name: appName,
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      secondaryAuth = firebase_auth.FirebaseAuth.instanceFor(app: secondaryApp);
-
-      final credential = await secondaryAuth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = credential.user;
-      if (user == null) {
-        return 'Unable to verify account credentials';
-      }
-
-      await user.delete();
-      return null;
-    } on firebase_auth.FirebaseAuthException catch (e) {
-      return e.message ?? 'Unable to delete account';
-    } catch (e) {
-      return 'Error: ${e.toString()}';
     } finally {
       try {
         await secondaryAuth?.signOut();

@@ -229,43 +229,6 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> ensureUserProfile({
-    required UserRole role,
-    String? fullName,
-  }) async {
-    if (_firebaseUser == null) return false;
-
-    final uid = _firebaseUser!.uid;
-    final email = _firebaseUser!.email ?? '';
-
-    final existing = await _firestoreService.getUserData(uid);
-    if (existing != null) {
-      _currentUser = existing;
-      notifyListeners();
-      return true;
-    }
-
-    final fallbackName = fullName ?? email.split('@').first;
-    final user = User(
-      uid: uid,
-      email: email,
-      fullName: fallbackName.isEmpty ? 'User' : fallbackName,
-      role: role,
-      createdAt: DateTime.now(),
-    );
-
-    final result = await _firestoreService.createUserProfile(user);
-    if (result != null) {
-      _error = result;
-      notifyListeners();
-      return false;
-    }
-
-    _currentUser = user;
-    notifyListeners();
-    return true;
-  }
-
   Future<bool> updateUserRole(UserRole role) async {
     if (_firebaseUser == null || _currentUser == null) return false;
 

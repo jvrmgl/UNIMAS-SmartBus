@@ -22,13 +22,6 @@ class DashboardNavProvider extends ChangeNotifier {
   double? get pendingMapLatitude => _pendingMapLatitude;
   double? get pendingMapLongitude => _pendingMapLongitude;
 
-  /// Request navigation to [tab] index in StudentDashboardScreen.
-  void navigateToDashboardTab(int tab) {
-    _pendingDashboardTab = tab;
-    _switchToHome = true;
-    notifyListeners();
-  }
-
   /// Switch to the Map tab and animate the map camera to [lat]/[lng].
   void navigateToMapWithFocus(double lat, double lng) {
     _pendingMapLatitude = lat;

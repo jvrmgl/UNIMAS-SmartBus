@@ -271,29 +271,6 @@ class FirestoreService {
     }
   }
 
-  // Remove a driver assignment from all buses
-  Future<String?> unassignDriverFromAllBuses(String driverId) async {
-    try {
-      final snapshot = await _firestore
-          .collection('buses')
-          .where('driverId', isEqualTo: driverId)
-          .get();
-
-      final batch = _firestore.batch();
-      for (final doc in snapshot.docs) {
-        batch.update(doc.reference, {
-          'driverId': null,
-          'driverName': null,
-          'lastUpdated': DateTime.now().toIso8601String(),
-        });
-      }
-      await batch.commit();
-      return null;
-    } catch (e) {
-      return 'Error unassigning driver from buses: $e';
-    }
-  }
-
   // ============ ROUTE OPERATIONS ============
 
   // Get all routes
@@ -479,16 +456,6 @@ class FirestoreService {
   }
 
   // ============ REPORT OPERATIONS ============
-
-  // Get all reports
-  Future<List<Report>> getReports() async {
-    try {
-      final snapshot = await _firestore.collection('reports').get();
-      return snapshot.docs.map((doc) => Report.fromMap(doc.data())).toList();
-    } catch (e) {
-      return [];
-    }
-  }
 
   // Get reports by authenticated reporter UID.
   Stream<List<Report>> getReportsByReporterUid(String reporterUid) {
@@ -1005,16 +972,6 @@ class FirestoreService {
     }
   }
 
-  // Create user profile
-  Future<String?> createUserProfile(User user) async {
-    try {
-      await _firestore.collection('users').doc(user.uid).set(user.toMap());
-      return null;
-    } catch (e) {
-      return 'Error creating user profile: $e';
-    }
-  }
-
   // Update user role
   Future<String?> updateUserRole({
     required String uid,
@@ -1240,22 +1197,6 @@ class FirestoreService {
     } catch (e) {
       // ignore
     }
-  }
-
-  // Stream device's active bus session
-  Stream<String?> streamDeviceActiveBusId(String deviceId) {
-    return _firestore
-        .collection('device_bus_sessions')
-        .where('deviceId', isEqualTo: deviceId)
-        .where('status', isEqualTo: 'active')
-        .limit(1)
-        .snapshots()
-        .map((snapshot) {
-      if (snapshot.docs.isNotEmpty) {
-        return snapshot.docs.first.data()['busId'] as String?;
-      }
-      return null;
-    });
   }
 
   // Best-effort safeguard: close active session/trip when app is terminated
@@ -1605,20 +1546,6 @@ class FirestoreService {
 
       return trips;
     });
-  }
-
-  // Get a single trip by ID
-  Future<StudentTrip?> getStudentTrip(String tripId) async {
-    try {
-      final doc =
-          await _firestore.collection('student_trips').doc(tripId).get();
-      if (doc.exists) {
-        return StudentTrip.fromMap(doc.data()!);
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
   }
 
   // ── Notification Templates ──────────────────────────────────────────────────

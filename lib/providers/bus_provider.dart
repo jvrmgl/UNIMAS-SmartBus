@@ -33,23 +33,6 @@ class BusProvider extends ChangeNotifier {
     }
   }
 
-  Future<Bus?> fetchBus(String busId) async {
-    try {
-      final bus = await _firestoreService.getBus(busId);
-      _selectedBus = bus;
-      notifyListeners();
-      return bus;
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-      return null;
-    }
-  }
-
-  Stream<Bus?> watchBus(String busId) {
-    return _firestoreService.getBusStream(busId);
-  }
-
   Future<bool> updateBusLocation({
     required String busId,
     required double latitude,

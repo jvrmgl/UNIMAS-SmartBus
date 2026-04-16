@@ -156,9 +156,6 @@ class FakeDeviceService implements DeviceService {
     getDeviceIdCalls++;
     return deviceId;
   }
-
-  @override
-  Future<void> clearDeviceId() async {}
 }
 
 void main() {

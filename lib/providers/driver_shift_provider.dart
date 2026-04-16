@@ -373,26 +373,6 @@ class DriverShiftProvider extends ChangeNotifier {
     }
   }
 
-  /// Refresh assigned bus data
-  Future<void> refreshBusData() async {
-    if (_assignedBus == null) return;
-
-    try {
-      final doc = await _firestore
-          .collection('buses')
-          .doc(_assignedBus!.busId)
-          .get();
-
-      if (doc.exists) {
-        _assignedBus = Bus.fromMap(doc.data()!);
-        notifyListeners();
-      }
-    } catch (e) {
-      _error = 'Failed to refresh bus data: $e';
-      notifyListeners();
-    }
-  }
-
   void clearError() {
     _error = null;
     notifyListeners();

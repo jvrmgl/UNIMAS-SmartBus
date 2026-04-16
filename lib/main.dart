@@ -15,7 +15,6 @@ import 'providers/theme_provider.dart';
 import 'providers/driver_shift_provider.dart';
 import 'providers/dashboard_nav_provider.dart';
 import 'services/device_service.dart';
-import 'services/local_storage_service.dart';
 import 'services/notification_service.dart';
 import 'providers/notification_prefs_provider.dart';
 import 'screens/auth/splash_screen.dart';
@@ -46,12 +45,10 @@ void main() async {
 Future<void> _initializeBackgroundServices() async {
   try {
     final deviceService = DeviceService();
-    final localStorageService = LocalStorageService();
     final notificationService = NotificationService();
 
     await Future.wait([
       deviceService.initialize(),
-      localStorageService.initialize(),
     ]);
 
     await notificationService.initializeNotifications();

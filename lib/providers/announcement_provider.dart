@@ -73,14 +73,6 @@ class AnnouncementProvider extends ChangeNotifier {
     return _firestoreService.getAnnouncementsStream();
   }
 
-  List<Announcement> getAnnouncementsForRoute(String routeId) {
-    return _announcements
-        .where((announcement) =>
-            announcement.affectedRoutes.isEmpty ||
-            announcement.affectedRoutes.contains(routeId))
-        .toList();
-  }
-
   void clearError() {
     _error = null;
     notifyListeners();

@@ -41,22 +41,6 @@ class RouteProvider extends ChangeNotifier {
     }
   }
 
-  Future<BusRoute?> fetchRoute(String routeId) async {
-    try {
-      final route = await _firestoreService.getRoute(routeId);
-      _selectedRoute = route;
-      if (route != null) {
-        _routeLegDistanceMeters[route.routeId] = route.legDistancesMeters ?? [];
-      }
-      notifyListeners();
-      return route;
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-      return null;
-    }
-  }
-
   Future<void> fetchBusStops() async {
     try {
       _busStops = await _firestoreService.getBusStops();
@@ -85,38 +69,6 @@ class RouteProvider extends ChangeNotifier {
   void stopListeningToBusStops() {
     _busStopsSubscription?.cancel();
     _busStopsSubscription = null;
-  }
-
-  Future<List<BusStop>> getStopsForRoute(String routeId) async {
-    try {
-      final route = await _firestoreService.getRoute(routeId);
-      if (route != null) {
-        return route.stopIds
-            .map((stopId) => _busStops.firstWhere(
-                  (stop) => stop.stopId == stopId,
-                  orElse: () => BusStop(
-                    stopId: stopId,
-                    stopName: 'Unknown',
-                    stopCode: 'N/A',
-                    latitude: 0,
-                    longitude: 0,
-                    description: '',
-                    createdAt: DateTime.now(),
-                  ),
-                ))
-            .toList();
-      }
-      return [];
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-      return [];
-    }
-  }
-
-  void selectRoute(BusRoute route) {
-    _selectedRoute = route;
-    notifyListeners();
   }
 
   BusStop? getBusStop(String stopId) {

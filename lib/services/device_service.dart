@@ -65,12 +65,4 @@ class DeviceService {
     await _box!.put(_deviceIdKey, newDeviceId);
     return newDeviceId;
   }
-
-  /// Clear device settings (for testing)
-  Future<void> clearDeviceId() async {
-    if (!_isInitialized || _box == null) {
-      await initialize();
-    }
-    await _box!.delete(_deviceIdKey);
-  }
 }

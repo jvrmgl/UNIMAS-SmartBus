@@ -23,11 +23,6 @@ class Announcement {
     required this.createdBy,
   });
 
-  // Check if announcement is expired
-  bool isExpired() {
-    return DateTime.now().isAfter(expiryDate);
-  }
-
   Map<String, dynamic> toMap() {
     return {
       'announcementId': announcementId,
