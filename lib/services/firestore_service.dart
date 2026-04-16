@@ -3,7 +3,6 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../models/bus_model.dart';
 import '../models/route_model.dart';
 import '../models/bus_stop_model.dart';
-import '../models/schedule_model.dart';
 import '../models/report_model.dart';
 import '../models/announcement_model.dart';
 import '../models/user_model.dart';
@@ -476,48 +475,6 @@ class FirestoreService {
       return null;
     } catch (e) {
       return 'Error deleting bus stop: $e';
-    }
-  }
-
-  // ============ SCHEDULE OPERATIONS ============
-
-  // Get schedules for a route
-  Future<List<BusSchedule>> getSchedulesForRoute(String routeId) async {
-    try {
-      final snapshot = await _firestore
-          .collection('schedules')
-          .where('routeId', isEqualTo: routeId)
-          .get();
-      return snapshot.docs
-          .map((doc) => BusSchedule.fromMap(doc.data()))
-          .toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  // Get all schedules
-  Future<List<BusSchedule>> getSchedules() async {
-    try {
-      final snapshot = await _firestore.collection('schedules').get();
-      return snapshot.docs
-          .map((doc) => BusSchedule.fromMap(doc.data()))
-          .toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  // Add schedule
-  Future<String?> addSchedule(BusSchedule schedule) async {
-    try {
-      await _firestore
-          .collection('schedules')
-          .doc(schedule.scheduleId)
-          .set(schedule.toMap());
-      return null;
-    } catch (e) {
-      return 'Error adding schedule: $e';
     }
   }
 

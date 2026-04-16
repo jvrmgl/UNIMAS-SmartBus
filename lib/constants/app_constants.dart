@@ -41,7 +41,6 @@ class AppConstants {
   static const String busesCollection = 'buses';
   static const String routesCollection = 'routes';
   static const String busStopsCollection = 'bus_stops';
-  static const String schedulesCollection = 'schedules';
   static const String tripsCollection = 'trips';
   static const String reportsCollection = 'reports';
   static const String announcementsCollection = 'announcements';
