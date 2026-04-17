@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/device_service.dart';
 import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   AuthProvider({
@@ -22,6 +24,7 @@ class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
   final FirestoreService _firestoreService;
   final DeviceService _deviceService;
+  final NotificationService _notificationService = NotificationService();
 
   User? _currentUser;
   firebase_auth.User? _firebaseUser;
@@ -41,14 +44,27 @@ class AuthProvider extends ChangeNotifier {
   bool get requiresDeviceTransfer => _requiresDeviceTransfer;
   bool get requiresEmailVerification => _requiresEmailVerification;
 
-  Future<User?> _loadUserProfileWithRetry(String uid) async {
+  Future<User?> _loadUserProfileWithRetry(String uid, {String? email}) async {
     User? profile;
     for (int attempt = 0; attempt < 3; attempt++) {
-      profile = await _firestoreService.getUserData(uid);
+      profile = await _firestoreService.getUserData(
+        uid,
+        fallbackEmail: email,
+      );
       if (profile != null) break;
       await Future.delayed(const Duration(milliseconds: 500));
     }
     return profile;
+  }
+
+  Future<void> _ensurePushRegistration(firebase_auth.User firebaseUser) async {
+    try {
+      await _notificationService.initializeNotifications();
+      await _notificationService.subscribeToBusAnnouncements();
+      await _notificationService.saveDeviceToken(userId: firebaseUser.uid);
+    } catch (e) {
+      debugPrint('AuthProvider: push registration sync failed: $e');
+    }
   }
 
   void _initializeAuth() {
@@ -65,10 +81,14 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
 
-      final fetchedProfile = await _loadUserProfileWithRetry(firebaseUser.uid);
+      final fetchedProfile = await _loadUserProfileWithRetry(
+        firebaseUser.uid,
+        email: firebaseUser.email,
+      );
       if (fetchedProfile != null) {
         _currentUser = fetchedProfile;
         _error = null;
+        unawaited(_ensurePushRegistration(firebaseUser));
       } else {
         // Avoid clobbering an already loaded profile for the same user when
         // Firestore briefly fails during auth-state propagation.
@@ -169,7 +189,10 @@ class AuthProvider extends ChangeNotifier {
       }
 
       // Load profile with short retries to handle transient Firestore/network lag.
-      final profile = await _loadUserProfileWithRetry(signedInUser.uid);
+      final profile = await _loadUserProfileWithRetry(
+        signedInUser.uid,
+        email: signedInUser.email,
+      );
 
       if (profile == null) {
         _error =
@@ -211,6 +234,7 @@ class AuthProvider extends ChangeNotifier {
       _firebaseUser = signedInUser;
       _currentUser = profile;
       _error = null;
+      unawaited(_ensurePushRegistration(signedInUser));
       return true;
     } catch (e) {
       _error = 'Sign-in failed: $e';
@@ -260,7 +284,10 @@ class AuthProvider extends ChangeNotifier {
 
     if (result == null) {
       // Refresh user data
-      _currentUser = await _firestoreService.getUserData(_firebaseUser!.uid);
+      _currentUser = await _firestoreService.getUserData(
+        _firebaseUser!.uid,
+        fallbackEmail: _firebaseUser!.email,
+      );
       notifyListeners();
       return true;
     } else {

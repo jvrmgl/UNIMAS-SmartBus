@@ -25,6 +25,8 @@ class DriverShiftProvider extends ChangeNotifier {
   bool _isAutoStartingShift = false;
   String? _error;
   String? _driverUid;
+  String? _driverEmail;
+  String? _driverName;
   StreamSubscription<Bus?>? _assignedBusSubscription;
 
   Bus? get assignedBus => _assignedBus;
@@ -96,6 +98,26 @@ class DriverShiftProvider extends ChangeNotifier {
   /// (same device, different account), all prior state is cleared first
   /// so Driver B never inherits Driver A's shift or bus.
   void setDriverUid(String uid) {
+    setDriverContext(uid: uid);
+  }
+
+  /// Initialize driver context used to resolve bus assignments.
+  ///
+  /// [email] is used to heal legacy assignments where a bus is still linked
+  /// to an old UID for the same driver account.
+  void setDriverContext({
+    required String uid,
+    String? email,
+    String? fullName,
+  }) {
+    final normalizedEmail = email?.trim().toLowerCase();
+    final normalizedName = fullName?.trim();
+    final identityUnchanged =
+        _driverUid == uid &&
+        _driverEmail == normalizedEmail &&
+        _driverName == normalizedName;
+    if (identityUnchanged) return;
+
     if (_driverUid != null && _driverUid != uid) {
       // New driver on same device — wipe state from previous session.
       _assignedBusSubscription?.cancel();
@@ -108,7 +130,65 @@ class DriverShiftProvider extends ChangeNotifier {
       _error = null;
     }
     _driverUid = uid;
+    _driverEmail = normalizedEmail;
+    _driverName = normalizedName;
     _checkAssignedBus();
+  }
+
+  Future<Bus?> _healLegacyAssignmentByEmail(List<Bus> buses) async {
+    if (_driverUid == null || _driverEmail == null || _driverEmail!.isEmpty) {
+      return null;
+    }
+
+    final matches = <Bus>[];
+
+    for (final bus in buses) {
+      final legacyDriverId = bus.driverId;
+      if (legacyDriverId == null || legacyDriverId == _driverUid) {
+        continue;
+      }
+
+      try {
+        final legacyUserDoc =
+            await _firestore.collection('users').doc(legacyDriverId).get();
+        if (!legacyUserDoc.exists) continue;
+
+        final data = legacyUserDoc.data();
+        if (data == null) continue;
+        final normalizedLegacyEmail =
+            ((data['normalizedEmail'] as String?) ??
+                    (data['email'] as String? ?? ''))
+                .trim()
+                .toLowerCase();
+
+        if (normalizedLegacyEmail == _driverEmail) {
+          matches.add(bus);
+        }
+      } catch (_) {
+        // Best effort only.
+      }
+    }
+
+    if (matches.length != 1) {
+      if (matches.length > 1) {
+        _error =
+            'Multiple buses are linked to your previous account. Please ask admin to reassign your bus.';
+      }
+      return null;
+    }
+
+    final bus = matches.first;
+    await _firestore.collection('buses').doc(bus.busId).update({
+      'driverId': _driverUid,
+      if (_driverName != null && _driverName!.isNotEmpty) 'driverName': _driverName,
+      'lastUpdated': DateTime.now().toIso8601String(),
+    });
+
+    return bus.copyWith(
+      driverId: _driverUid,
+      driverName: _driverName ?? bus.driverName,
+      lastUpdated: DateTime.now(),
+    );
   }
 
   /// Check if admin has already assigned a bus to this driver.
@@ -119,7 +199,9 @@ class DriverShiftProvider extends ChangeNotifier {
 
     try {
       final buses = await _firestoreService.getBuses();
-      final assigned = buses.where((bus) => bus.driverId == _driverUid).firstOrNull;
+      Bus? assigned =
+          buses.where((bus) => bus.driverId == _driverUid).firstOrNull;
+      assigned ??= await _healLegacyAssignmentByEmail(buses);
       
       if (assigned != null) {
         _assignedBus = assigned;
@@ -391,6 +473,8 @@ class DriverShiftProvider extends ChangeNotifier {
     _assignedBus = null;
     _isOnShift = false;
     _driverUid = null;
+    _driverEmail = null;
+    _driverName = null;
     _error = null;
     notifyListeners();
   }

@@ -9,12 +9,17 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../utils/app_navigator.dart';
 
 class NotificationService {
+  static final NotificationService _instance = NotificationService._internal();
+  factory NotificationService() => _instance;
+  NotificationService._internal();
+
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
   StreamSubscription<RemoteMessage>? _onMessageSubscription;
   StreamSubscription<RemoteMessage>? _onMessageOpenedAppSubscription;
+  StreamSubscription<String>? _onTokenRefreshSubscription;
 
   static const AndroidNotificationChannel _announcementsChannel =
       AndroidNotificationChannel(
@@ -38,6 +43,7 @@ class NotificationService {
 
     await _onMessageSubscription?.cancel();
     await _onMessageOpenedAppSubscription?.cancel();
+    await _onTokenRefreshSubscription?.cancel();
 
     // Initialize local notifications (for foreground display)
     const initializationSettingsAndroid =
@@ -84,6 +90,25 @@ class NotificationService {
           : token;
       debugPrint('FCM Token (masked): $masked');
     }
+
+    _onTokenRefreshSubscription =
+        _firebaseMessaging.onTokenRefresh.listen((newToken) async {
+      if (kDebugMode) {
+        final masked = newToken.length > 12
+            ? '${newToken.substring(0, 6)}...${newToken.substring(newToken.length - 6)}'
+            : newToken;
+        debugPrint('FCM token refreshed (masked): $masked');
+      }
+
+      try {
+        await subscribeToBusAnnouncements();
+        await saveDeviceToken();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('NotificationService: token refresh sync failed: $e');
+        }
+      }
+    });
 
     // Handle foreground messages
     _onMessageSubscription =
@@ -152,6 +177,9 @@ class NotificationService {
         });
       }
     });
+
+    // Ensure topic subscription is restored on every app launch.
+    await subscribeToBusAnnouncements();
 
     _isInitialized = true;
   }

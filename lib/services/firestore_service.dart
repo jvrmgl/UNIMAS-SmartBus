@@ -690,17 +690,77 @@ class FirestoreService {
     }
   }
 
-  // Get user data from Firestore
-  Future<User?> getUserData(String uid) async {
+  // Get user data from Firestore.
+  //
+  // If users/{uid} is missing but fallbackEmail matches a legacy profile
+  // document (same email, different document id), the profile is copied to
+  // users/{uid} to recover from UID drift between Auth and Firestore.
+  Future<User?> getUserData(
+    String uid, {
+    String? fallbackEmail,
+  }) async {
     try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
-        return User.fromMap(doc.data() as Map<String, dynamic>);
+      final directDoc = await _firestore.collection('users').doc(uid).get();
+      if (directDoc.exists) {
+        final directData = directDoc.data();
+        if (directData == null) return null;
+        return User.fromMap({
+          ...directData,
+          'uid': uid,
+        });
       }
-      return null;
-    } catch (e) {
+
+      final normalizedEmail = fallbackEmail?.trim().toLowerCase();
+      if (normalizedEmail == null || normalizedEmail.isEmpty) return null;
+
+      final legacyDoc = await _findUserDocByEmail(normalizedEmail);
+      if (legacyDoc == null) return null;
+
+      final legacyData = legacyDoc.data();
+      if (legacyData == null) return null;
+
+      final recoveredData = <String, dynamic>{
+        ...legacyData,
+        'uid': uid,
+        'email': (legacyData['email'] as String? ?? normalizedEmail).trim(),
+        'normalizedEmail': normalizedEmail,
+      };
+
+      await _firestore.collection('users').doc(uid).set(
+            recoveredData,
+            SetOptions(merge: true),
+          );
+
+      return User.fromMap(recoveredData);
+    } catch (_) {
       return null;
     }
+  }
+
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _findUserDocByEmail(
+    String normalizedEmail,
+  ) async {
+    final byNormalizedEmail = await _firestore
+        .collection('users')
+        .where('normalizedEmail', isEqualTo: normalizedEmail)
+        .limit(1)
+        .get();
+
+    if (byNormalizedEmail.docs.isNotEmpty) {
+      return byNormalizedEmail.docs.first;
+    }
+
+    final byLowercaseEmail = await _firestore
+        .collection('users')
+        .where('email', isEqualTo: normalizedEmail)
+        .limit(1)
+        .get();
+
+    if (byLowercaseEmail.docs.isNotEmpty) {
+      return byLowercaseEmail.docs.first;
+    }
+
+    return null;
   }
 
   // Check whether an email is already registered as a staff account.

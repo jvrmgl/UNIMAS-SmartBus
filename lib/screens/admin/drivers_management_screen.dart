@@ -312,7 +312,10 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value?.isEmpty ?? true) return 'Email is required';
-                    if (!value!.contains('@')) return 'Invalid email';
+                    if (!_isValidEmail(value!)) return 'Invalid email format';
+                    if (!_isAllowedDriverEmailDomain(value)) {
+                      return 'Driver email must end with @unimas.my or @unimas.edu.my';
+                    }
                     return null;
                   },
                 ),
@@ -328,10 +331,22 @@ class _DriversManagementScreenState extends State<DriversManagementScreen> {
           ElevatedButton(
             onPressed: () async {
               if (formKey.currentState!.validate()) {
-                final error = await _firestoreService.updateUserProfile(
+                final updatedName = nameController.text.trim();
+                final updatedEmail = emailController.text.trim().toLowerCase();
+                final currentEmail = driver.email.trim().toLowerCase();
+
+                String? error;
+                if (updatedEmail != currentEmail) {
+                  error = await _authService.updateUserAuthEmailByUidAsAdmin(
+                    uid: driver.uid,
+                    email: updatedEmail,
+                  );
+                }
+
+                error ??= await _firestoreService.updateUserProfile(
                   uid: driver.uid,
-                  fullName: nameController.text.trim(),
-                  email: emailController.text.trim(),
+                  fullName: updatedName,
+                  email: updatedEmail,
                 );
 
                 if (!dialogContext.mounted) return;

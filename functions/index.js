@@ -27,6 +27,71 @@ function enforceRateLimit(uid, { maxCalls = 10, windowMs = 60_000 } = {}) {
   }
 }
 
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function collectUniqueFcmTokens() {
+  const snapshot = await admin.firestore().collection('device_tokens').get();
+  const tokenSet = new Set();
+
+  for (const doc of snapshot.docs) {
+    const token = doc.data()?.fcmToken;
+    if (typeof token !== 'string') continue;
+    const normalized = token.trim();
+    if (!normalized) continue;
+    tokenSet.add(normalized);
+  }
+
+  return Array.from(tokenSet);
+}
+
+async function sendAnnouncementToStoredTokens({ title, body, data }) {
+  const tokens = await collectUniqueFcmTokens();
+  if (tokens.length === 0) {
+    return {
+      targetedTokens: 0,
+      successCount: 0,
+      failureCount: 0,
+    };
+  }
+
+  const batches = chunkArray(tokens, 500);
+  let successCount = 0;
+  let failureCount = 0;
+
+  for (const tokenBatch of batches) {
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens: tokenBatch,
+      notification: { title, body },
+      android: {
+        priority: 'high',
+        notification: {
+          sound: 'default',
+          channelId: 'announcements',
+        },
+      },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    });
+
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+  }
+
+  return {
+    targetedTokens: tokens.length,
+    successCount,
+    failureCount,
+  };
+}
+
 exports.deleteAuthUserByUid = functions
   .region('asia-southeast1')
   .https.onCall(async (data, context) => {
@@ -71,6 +136,82 @@ exports.deleteAuthUserByUid = functions
     return { success: true };
   });
 
+exports.updateAuthUserEmailByUid = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+    // Rate limit: max 10 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 10, windowMs: 60_000 });
+
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can update auth emails.'
+      );
+    }
+
+    const uid = typeof data?.uid === 'string' ? data.uid.trim() : '';
+    const email = typeof data?.email === 'string'
+      ? data.email.trim().toLowerCase()
+      : '';
+
+    if (!uid || !email) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Both uid and email are required.'
+      );
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Invalid email format.'
+      );
+    }
+
+    try {
+      await admin.auth().updateUser(uid, { email });
+      return { success: true };
+    } catch (error) {
+      const code = error?.code || '';
+      if (code === 'auth/user-not-found') {
+        throw new functions.https.HttpsError(
+          'not-found',
+          'Auth account not found for this user.'
+        );
+      }
+      if (code === 'auth/email-already-exists') {
+        throw new functions.https.HttpsError(
+          'already-exists',
+          'This email is already used by another auth account.'
+        );
+      }
+      if (code === 'auth/invalid-email') {
+        throw new functions.https.HttpsError(
+          'invalid-argument',
+          'Invalid email format.'
+        );
+      }
+
+      throw new functions.https.HttpsError(
+        'internal',
+        error?.message || 'Failed to update auth email.'
+      );
+    }
+  });
+
 // Send push notification when a new announcement is created
 exports.sendAnnouncementNotification = functions
   .region('asia-southeast1')
@@ -79,12 +220,22 @@ exports.sendAnnouncementNotification = functions
     const announcement = snap.data();
 
     try {
-      // Use FCM v1 API with proper Android config
-      const message = {
-        notification: {
-          title: announcement.title || 'New Announcement',
-          body: announcement.description || 'Tap to view details',
-        },
+      const title = announcement.title || 'New Announcement';
+      const body = announcement.description || 'Tap to view details';
+      const payloadData = {
+        type: 'announcement',
+        announcementId: context.params.announcementId,
+        announcementType: announcement.type || 'service',
+      };
+
+      const tokenFanout = await sendAnnouncementToStoredTokens({
+        title,
+        body,
+        data: payloadData,
+      });
+
+      const topicResponse = await admin.messaging().send({
+        notification: { title, body },
         android: {
           priority: 'high',
           notification: {
@@ -93,17 +244,27 @@ exports.sendAnnouncementNotification = functions
           },
         },
         data: {
-          type: 'announcement',
-          announcementId: context.params.announcementId,
-          announcementType: announcement.type || 'service',
+          ...payloadData,
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
         },
         topic: 'announcements',
+      });
+
+      console.log('Sent announcement notification.', {
+        announcementId: context.params.announcementId,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
+      });
+
+      return {
+        success: true,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
       };
-      
-      const response = await admin.messaging().send(message);
-      console.log('Successfully sent announcement notification:', response);
-      return { success: true, messageId: response };
     } catch (error) {
       console.error('Error sending announcement notification:', error);
       console.error('Error details:', error.code, error.message);
@@ -163,12 +324,26 @@ exports.resendAnnouncementNotification = functions
     const announcement = announcementDoc.data();
 
     try {
-      // Use FCM v1 API with proper Android config
-      const message = {
-        notification: {
-          title: announcement.title || 'Announcement Reminder',
-          body: announcement.description || 'Tap to view details',
-        },
+      const title = announcement.title || 'Announcement Reminder';
+      const body = announcement.description || 'Tap to view details';
+      const payloadData = {
+        type: 'announcement',
+        announcementId: announcementId,
+        announcementType: announcement.type || 'service',
+      };
+
+      // Primary path: fan out directly to known device tokens so resend does
+      // not depend on topic subscription state on each client.
+      const tokenFanout = await sendAnnouncementToStoredTokens({
+        title,
+        body,
+        data: payloadData,
+      });
+
+      // Fallback for brand-new installs/devices not yet written to
+      // device_tokens collection.
+      const topicResponse = await admin.messaging().send({
+        notification: { title, body },
         android: {
           priority: 'high',
           notification: {
@@ -177,17 +352,27 @@ exports.resendAnnouncementNotification = functions
           },
         },
         data: {
-          type: 'announcement',
-          announcementId: announcementId,
-          announcementType: announcement.type || 'service',
+          ...payloadData,
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
         },
         topic: 'announcements',
+      });
+
+      console.log('Resent announcement notification.', {
+        announcementId,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
+      });
+
+      return {
+        success: true,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
       };
-      
-      const response = await admin.messaging().send(message);
-      console.log('Successfully resent announcement notification:', response);
-      return { success: true, messageId: response };
     } catch (error) {
       console.error('Error resending announcement notification:', error);
       console.error('Error details:', error.code, error.message);

@@ -55,7 +55,8 @@ Future<void> _initializeBackgroundServices() async {
     await notificationService.subscribeToBusAnnouncements();
     // Save device FCM token so Cloud Functions can target this device
     await notificationService.saveDeviceToken();
-  } catch (_) {
+  } catch (e) {
+    debugPrint('Background services init failed: $e');
     // Keep startup resilient even if optional background services fail.
   }
 }

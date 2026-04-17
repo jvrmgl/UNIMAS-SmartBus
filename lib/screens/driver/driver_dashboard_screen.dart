@@ -23,30 +23,45 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   bool _isOccupancyEditorOpen = false;
   bool _showRouteError = false;
   final FirestoreService _firestoreService = FirestoreService();
+  AuthProvider? _authProvider;
+
+  void _syncDriverContext() {
+    if (!mounted || _authProvider == null) return;
+    final currentUser = _authProvider!.currentUser;
+    if (currentUser == null) return;
+
+    final shiftProvider = context.read<DriverShiftProvider>();
+    shiftProvider.setDriverContext(
+      uid: currentUser.uid,
+      email: currentUser.email,
+      fullName: currentUser.fullName,
+    );
+
+    // Save driver FCM token keyed by userId so the shift-reminder
+    // Cloud Function can target this device by driverId.
+    NotificationService().saveDeviceToken(userId: currentUser.uid);
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final authProvider = context.read<AuthProvider>();
-      final shiftProvider = context.read<DriverShiftProvider>();
-      
-      // Initialize driver
-      if (authProvider.currentUser != null) {
-        shiftProvider.setDriverUid(authProvider.currentUser!.uid);
-        // Save driver FCM token keyed by userId so the shift-reminder
-        // Cloud Function can target this device by driverId.
-        NotificationService().saveDeviceToken(
-          userId: authProvider.currentUser!.uid,
-        );
-      }
+      _authProvider = context.read<AuthProvider>();
+      _authProvider!.addListener(_syncDriverContext);
+      _syncDriverContext();
       
       context.read<AnnouncementProvider>().fetchAnnouncements();
       context.read<BusProvider>().listenToBuses(); // real-time stream
       context.read<RouteProvider>().fetchRoutes();
       context.read<RouteProvider>().fetchBusStops();
     });
+  }
+
+  @override
+  void dispose() {
+    _authProvider?.removeListener(_syncDriverContext);
+    super.dispose();
   }
 
   @override

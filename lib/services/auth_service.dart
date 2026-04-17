@@ -284,4 +284,23 @@ class AuthService {
       return 'Error: ${e.toString()}';
     }
   }
+
+  // Admin: update a Firebase Auth account email by UID via callable CF
+  Future<String?> updateUserAuthEmailByUidAsAdmin({
+    required String uid,
+    required String email,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('updateAuthUserEmailByUid');
+      await callable.call({
+        'uid': uid,
+        'email': email.trim().toLowerCase(),
+      });
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      return e.message ?? 'Unable to update auth email';
+    } catch (e) {
+      return 'Error: ${e.toString()}';
+    }
+  }
 }
