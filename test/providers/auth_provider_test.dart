@@ -126,7 +126,10 @@ class FakeFirestoreService extends FirestoreService {
   }
 
   @override
-  Future<User?> getUserData(String uid) async {
+  Future<User?> getUserData(
+    String uid, {
+    String? fallbackEmail,
+  }) async {
     return usersByUid[uid];
   }
 
