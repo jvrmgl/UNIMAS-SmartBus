@@ -251,14 +251,27 @@ flutter test integration_test
 
 ## Deployment
 
+### Versioning
+Use a new build number for every APK or AAB you distribute to testers. A simple rule is:
+- `1.0.1+2` for the next test build
+- `1.0.1+3` for the build after that
+
+Keep a small release note for each build so you can tell which APK is on which device.
+
 ### Android Deployment
 ```bash
+# Optional but recommended before packaging a fresh release
+flutter clean
+flutter pub get
+
 # Build signed APK
 flutter build apk --release
 
 # Build App Bundle for Play Store
 flutter build appbundle --release
 ```
+
+To produce a proper release APK, create `android/key.properties` with your release keystore details and keep the keystore file private.
 
 ### iOS Deployment
 ```bash
