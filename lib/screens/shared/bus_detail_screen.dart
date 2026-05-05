@@ -828,6 +828,20 @@ class _BusDetailScreenState extends State<BusDetailScreen> {
   }) {
     if (orderedStops.isEmpty) return null;
 
+    final targetStop = orderedStops[targetIndex];
+
+    // Priority 1: Check for Live Traffic ETA (Distance Matrix)
+    if (bus.liveEtaByStopId != null && bus.liveEtaUpdatedAt != null) {
+      final age = DateTime.now().difference(bus.liveEtaUpdatedAt!);
+      if (age.inMinutes < 5) {
+        final liveEta = bus.liveEtaByStopId![targetStop.stopId];
+        if (liveEta != null) {
+          return liveEta;
+        }
+      }
+    }
+
+    // Priority 2: Fallback to mathematical distance estimate
     final currentIndex = _nearestRouteStopIndex(bus, orderedStops);
     final directToCurrentMeters = Geolocator.distanceBetween(
       bus.latitude,

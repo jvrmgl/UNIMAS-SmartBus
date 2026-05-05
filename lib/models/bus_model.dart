@@ -26,6 +26,11 @@ class Bus {
   final String? assignedRoute;
   final String? driverId;    // UID of the assigned driver
   final String? driverName;  // Display name of the assigned driver
+  
+  // Live ETA fields
+  final Map<String, int>? liveEtaByStopId;
+  final DateTime? liveEtaUpdatedAt;
+  final String? liveEtaSource;
 
   Bus({
     required this.busId,
@@ -40,6 +45,9 @@ class Bus {
     this.assignedRoute,
     this.driverId,
     this.driverName,
+    this.liveEtaByStopId,
+    this.liveEtaUpdatedAt,
+    this.liveEtaSource,
   });
 
   // Calculate occupancy percentage
@@ -73,6 +81,9 @@ class Bus {
       'assignedRoute': assignedRoute,
       'driverId': driverId,
       'driverName': driverName,
+      'liveEtaByStopId': liveEtaByStopId,
+      'liveEtaUpdatedAt': liveEtaUpdatedAt?.toIso8601String(),
+      'liveEtaSource': liveEtaSource,
     };
   }
 
@@ -90,6 +101,13 @@ class Bus {
       assignedRoute: map['assignedRoute'] as String?,
       driverId: map['driverId'] as String?,
       driverName: map['driverName'] as String?,
+      liveEtaByStopId: map['liveEtaByStopId'] != null 
+          ? Map<String, int>.from(map['liveEtaByStopId'] as Map)
+          : null,
+      liveEtaUpdatedAt: map['liveEtaUpdatedAt'] != null 
+          ? _parseDateTime(map['liveEtaUpdatedAt']) 
+          : null,
+      liveEtaSource: map['liveEtaSource'] as String?,
     );
   }
 
@@ -106,6 +124,9 @@ class Bus {
     String? assignedRoute,
     String? driverId,
     String? driverName,
+    Map<String, int>? liveEtaByStopId,
+    DateTime? liveEtaUpdatedAt,
+    String? liveEtaSource,
   }) {
     return Bus(
       busId: busId ?? this.busId,
@@ -120,6 +141,9 @@ class Bus {
       assignedRoute: assignedRoute ?? this.assignedRoute,
       driverId: driverId ?? this.driverId,
       driverName: driverName ?? this.driverName,
+      liveEtaByStopId: liveEtaByStopId ?? this.liveEtaByStopId,
+      liveEtaUpdatedAt: liveEtaUpdatedAt ?? this.liveEtaUpdatedAt,
+      liveEtaSource: liveEtaSource ?? this.liveEtaSource,
     );
   }
 }

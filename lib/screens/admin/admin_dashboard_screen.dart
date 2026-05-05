@@ -85,7 +85,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // â”€â”€ Welcome Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // Welcome Header
             Consumer<AuthProvider>(
               builder: (context, authProvider, _) {
                 final name =
@@ -129,7 +129,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
 
-            // â”€â”€ System Overview (tappable â†’ AnalyticsScreen) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // System Overview (tappable → AnalyticsScreen)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(
@@ -270,7 +270,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
 
-            // â”€â”€ Management Grid (3-column) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // Management Grid (3-column)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
               child: Text(
@@ -282,14 +282,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
                   Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: GridView.count(
                 crossAxisCount: 3,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.82,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 1.05,
                 children: [
                   FadeSlideIn(
                     delay: const Duration(milliseconds: 0),
@@ -378,19 +378,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required Color color,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: color, size: 22),
+            child: Icon(icon, color: color, size: 20),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(

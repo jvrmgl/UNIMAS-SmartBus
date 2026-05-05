@@ -1,0 +1,1252 @@
+﻿const admin = require('firebase-admin');
+const functions = require('firebase-functions/v1');
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+// â”€â”€ Per-instance in-memory rate limiter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Prevents abuse of callable functions. Resets per window per UID.
+// Per-instance only â€” sufficient for a campus-scale app.
+const _rateLimitMap = new Map();
+function enforceRateLimit(uid, { maxCalls = 10, windowMs = 60_000 } = {}) {
+  const now = Date.now();
+  const entry = _rateLimitMap.get(uid) ?? { count: 0, windowStart: now };
+  if (now - entry.windowStart > windowMs) {
+    entry.count = 1;
+    entry.windowStart = now;
+  } else {
+    entry.count += 1;
+  }
+  _rateLimitMap.set(uid, entry);
+  if (entry.count > maxCalls) {
+    throw new functions.https.HttpsError(
+      'resource-exhausted',
+      'Too many requests. Please try again later.'
+    );
+  }
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function collectUniqueFcmTokens() {
+  const snapshot = await admin.firestore().collection('device_tokens').get();
+  const tokenSet = new Set();
+
+  for (const doc of snapshot.docs) {
+    const token = doc.data()?.fcmToken;
+    if (typeof token !== 'string') continue;
+    const normalized = token.trim();
+    if (!normalized) continue;
+    tokenSet.add(normalized);
+  }
+
+  return Array.from(tokenSet);
+}
+
+async function sendAnnouncementToStoredTokens({ title, body, data }) {
+  const tokens = await collectUniqueFcmTokens();
+  if (tokens.length === 0) {
+    return {
+      targetedTokens: 0,
+      successCount: 0,
+      failureCount: 0,
+    };
+  }
+
+  const batches = chunkArray(tokens, 500);
+  let successCount = 0;
+  let failureCount = 0;
+
+  for (const tokenBatch of batches) {
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens: tokenBatch,
+      notification: { title, body },
+      android: {
+        priority: 'high',
+        notification: {
+          sound: 'default',
+          channelId: 'announcements',
+        },
+      },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    });
+
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+  }
+
+  return {
+    targetedTokens: tokens.length,
+    successCount,
+    failureCount,
+  };
+}
+
+exports.deleteAuthUserByUid = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+    // Rate limit: max 5 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 5, windowMs: 60_000 });
+
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can delete auth users.'
+      );
+    }
+
+    const uid = data?.uid;
+    if (!uid || typeof uid !== 'string') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'A valid uid is required.'
+      );
+    }
+
+    if (uid === context.auth.uid) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'Admin cannot delete their own auth account from this action.'
+      );
+    }
+
+    await admin.auth().deleteUser(uid);
+    return { success: true };
+  });
+
+exports.updateAuthUserEmailByUid = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+    // Rate limit: max 10 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 10, windowMs: 60_000 });
+
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can update auth emails.'
+      );
+    }
+
+    const uid = typeof data?.uid === 'string' ? data.uid.trim() : '';
+    const email = typeof data?.email === 'string'
+      ? data.email.trim().toLowerCase()
+      : '';
+
+    if (!uid || !email) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Both uid and email are required.'
+      );
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Invalid email format.'
+      );
+    }
+
+    try {
+      await admin.auth().updateUser(uid, { email });
+      return { success: true };
+    } catch (error) {
+      const code = error?.code || '';
+      if (code === 'auth/user-not-found') {
+        throw new functions.https.HttpsError(
+          'not-found',
+          'Auth account not found for this user.'
+        );
+      }
+      if (code === 'auth/email-already-exists') {
+        throw new functions.https.HttpsError(
+          'already-exists',
+          'This email is already used by another auth account.'
+        );
+      }
+      if (code === 'auth/invalid-email') {
+        throw new functions.https.HttpsError(
+          'invalid-argument',
+          'Invalid email format.'
+        );
+      }
+
+      throw new functions.https.HttpsError(
+        'internal',
+        error?.message || 'Failed to update auth email.'
+      );
+    }
+  });
+
+// Send push notification when a new announcement is created
+exports.sendAnnouncementNotification = functions
+  .region('asia-southeast1')
+  .firestore.document('announcements/{announcementId}')
+  .onCreate(async (snap, context) => {
+    const announcement = snap.data();
+
+    try {
+      const title = announcement.title || 'New Announcement';
+      const body = announcement.description || 'Tap to view details';
+      const payloadData = {
+        type: 'announcement',
+        announcementId: context.params.announcementId,
+        announcementType: announcement.type || 'service',
+      };
+
+      const tokenFanout = await sendAnnouncementToStoredTokens({
+        title,
+        body,
+        data: payloadData,
+      });
+
+      const topicResponse = await admin.messaging().send({
+        notification: { title, body },
+        android: {
+          priority: 'high',
+          notification: {
+            sound: 'default',
+            channelId: 'announcements',
+          },
+        },
+        data: {
+          ...payloadData,
+          click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+        topic: 'announcements',
+      });
+
+      console.log('Sent announcement notification.', {
+        announcementId: context.params.announcementId,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
+      });
+
+      return {
+        success: true,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
+      };
+    } catch (error) {
+      console.error('Error sending announcement notification:', error);
+      console.error('Error details:', error.code, error.message);
+      throw new functions.https.HttpsError('internal', 'Failed to send notification: ' + error.message);
+    }
+  });
+
+// Manually trigger push notification (for resend feature)
+exports.resendAnnouncementNotification = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+    // Rate limit: max 10 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 10, windowMs: 60_000 });
+
+    // Verify admin role
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can resend notifications.'
+      );
+    }
+
+    const announcementId = data?.announcementId;
+    if (!announcementId || typeof announcementId !== 'string') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'A valid announcementId is required.'
+      );
+    }
+
+    // Fetch the announcement
+    const announcementDoc = await admin
+      .firestore()
+      .collection('announcements')
+      .doc(announcementId)
+      .get();
+
+    if (!announcementDoc.exists) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        'Announcement not found.'
+      );
+    }
+
+    const announcement = announcementDoc.data();
+
+    try {
+      const title = announcement.title || 'Announcement Reminder';
+      const body = announcement.description || 'Tap to view details';
+      const payloadData = {
+        type: 'announcement',
+        announcementId: announcementId,
+        announcementType: announcement.type || 'service',
+      };
+
+      // Primary path: fan out directly to known device tokens so resend does
+      // not depend on topic subscription state on each client.
+      const tokenFanout = await sendAnnouncementToStoredTokens({
+        title,
+        body,
+        data: payloadData,
+      });
+
+      // Fallback for brand-new installs/devices not yet written to
+      // device_tokens collection.
+      const topicResponse = await admin.messaging().send({
+        notification: { title, body },
+        android: {
+          priority: 'high',
+          notification: {
+            sound: 'default',
+            channelId: 'announcements',
+          },
+        },
+        data: {
+          ...payloadData,
+          click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+        topic: 'announcements',
+      });
+
+      console.log('Resent announcement notification.', {
+        announcementId,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
+      });
+
+      return {
+        success: true,
+        topicMessageId: topicResponse,
+        targetedTokens: tokenFanout.targetedTokens,
+        tokenSuccessCount: tokenFanout.successCount,
+        tokenFailureCount: tokenFanout.failureCount,
+      };
+    } catch (error) {
+      console.error('Error resending announcement notification:', error);
+      console.error('Error details:', error.code, error.message);
+      throw new functions.https.HttpsError('internal', 'Failed to resend notification: ' + error.message);
+    }
+  });
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// SMART NOTIFICATION HELPERS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/** Haversine distance in kilometres between two lat/lon points. */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (v) => (v * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Send an FCM message to a single device token. Returns true on success. */
+async function sendToToken(fcmToken, title, body, data = {}) {
+  try {
+    await admin.messaging().send({
+      token: fcmToken,
+      notification: { title, body },
+      android: {
+        priority: 'high',
+        notification: { channelId: 'bus_updates', sound: 'default' },
+      },
+      data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', ...data },
+    });
+    return true;
+  } catch (err) {
+    console.error('sendToToken error:', err.message);
+    return false;
+  }
+}
+
+/** Read notification template from Firestore; returns defaults on failure. */
+async function getTemplate(type, defaultTitle, defaultBody) {
+  try {
+    const doc = await admin.firestore()
+      .collection('notification_templates')
+      .doc(type)
+      .get();
+    if (doc.exists) {
+      const d = doc.data();
+      return { title: d.title || defaultTitle, body: d.body || defaultBody };
+    }
+  } catch (e) {
+    console.warn('getTemplate error:', e.message);
+  }
+  return { title: defaultTitle, body: defaultBody };
+}
+
+/** Replace {key} placeholders in a template string with values from vars. */
+function fillTemplate(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (_, key) =>
+    vars[key] !== undefined ? String(vars[key]) : `{${key}}`
+  );
+}
+
+function getMapsApiKeyOrThrow() {
+  const key = process.env.GOOGLE_MAPS_API_KEY || '';
+  if (!key) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'GOOGLE_MAPS_API_KEY is not configured in Cloud Functions environment.'
+    );
+  }
+  return key;
+}
+
+function getRateLimitIdentity(context) {
+  return (
+    context.auth?.uid ||
+    context.rawRequest?.ip ||
+    'anonymous_requester'
+  );
+}
+
+// â”€â”€ Places API (New) proxy: Autocomplete suggestions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Keeps Maps key server-side and avoids Android app-restriction mismatches
+// for HTTP Places calls made directly from the client.
+exports.placesAutocompleteNew = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    enforceRateLimit(getRateLimitIdentity(context), {
+      maxCalls: 60,
+      windowMs: 60_000,
+    });
+
+    const input = typeof data?.input === 'string' ? data.input.trim() : '';
+    const limit = Math.min(Math.max(Number(data?.limit || 3), 1), 5);
+    if (input.length < 3) {
+      return { suggestions: [] };
+    }
+
+    const key = getMapsApiKeyOrThrow();
+    const endpoint = 'https://places.googleapis.com/v1/places:autocomplete';
+    const body = {
+      input,
+      includedRegionCodes: ['MY'],
+      locationBias: {
+        circle: {
+          center: {
+            latitude: 1.4655,
+            longitude: 110.3578,
+          },
+          radius: 50000,
+        },
+      },
+    };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask':
+          'suggestions.placePrediction.text.text,suggestions.placePrediction.placeId',
+      },
+      body: JSON.stringify(body),
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      const message = payload?.error?.message || 'Places autocomplete request failed.';
+      throw new functions.https.HttpsError('internal', message);
+    }
+
+    const suggestions = Array.isArray(payload?.suggestions)
+      ? payload.suggestions
+          .map((item) => item?.placePrediction?.text?.text)
+          .filter((text) => typeof text === 'string' && text.trim().length > 0)
+          .slice(0, limit)
+      : [];
+
+    return { suggestions };
+  });
+
+// â”€â”€ Places API (New) proxy: Text search -> coordinates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+exports.searchPlaceCoordinatesNew = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    enforceRateLimit(getRateLimitIdentity(context), {
+      maxCalls: 30,
+      windowMs: 60_000,
+    });
+
+    const query = typeof data?.query === 'string' ? data.query.trim() : '';
+    if (!query) {
+      return { location: null };
+    }
+
+    const key = getMapsApiKeyOrThrow();
+    const endpoint = 'https://places.googleapis.com/v1/places:searchText';
+    const body = {
+      textQuery: query,
+      regionCode: 'MY',
+      languageCode: 'en',
+      locationBias: {
+        circle: {
+          center: {
+            latitude: 1.4655,
+            longitude: 110.3578,
+          },
+          radius: 50000,
+        },
+      },
+      pageSize: 1,
+    };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask':
+          'places.displayName.text,places.location.latitude,places.location.longitude',
+      },
+      body: JSON.stringify(body),
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      const message = payload?.error?.message || 'Place search request failed.';
+      throw new functions.https.HttpsError('internal', message);
+    }
+
+    const firstPlace = Array.isArray(payload?.places) ? payload.places[0] : null;
+    const latitude = Number(firstPlace?.location?.latitude);
+    const longitude = Number(firstPlace?.location?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return { location: null };
+    }
+
+    return {
+      location: {
+        latitude,
+        longitude,
+      },
+      name: firstPlace?.displayName?.text || null,
+    };
+  });
+
+// â”€â”€ 1. Approaching-bus notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Runs every 2 minutes. For each student waiting at a stop, checks if any
+// active bus is within 500 m. If so, sends an FCM push and marks the
+// waiting_students record as 'notified' to avoid repeated alerts.
+exports.checkApproachingBuses = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 2 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const [busesSnap, waitingSnap] = await Promise.all([
+      admin.firestore().collection('buses').where('isActive', '==', true).get(),
+      admin.firestore()
+        .collection('waiting_students')
+        .where('status', '==', 'waiting')
+        .get(),
+    ]);
+
+    if (waitingSnap.empty || busesSnap.empty) return null;
+
+    const buses = busesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    // Load template once outside the loop to avoid per-student DB reads.
+    const approachingTmpl = await getTemplate(
+      'bus_approaching',
+      '\uD83D\uDE8C Bus is approaching!',
+      'Bus {busNumber} ({regNumber}) is approaching {stopName}'
+    );
+
+    for (const waitDoc of waitingSnap.docs) {
+      const w = waitDoc.data();
+      if (!w.fcmToken) continue;
+
+      // Don't spam â€“ only notify once per 10 minutes per student
+      if (w.notifiedAt && w.notifiedAt.toDate() > tenMinAgo) continue;
+
+      for (const bus of buses) {
+        if (!bus.latitude || !bus.longitude) continue;
+        const dist = haversineKm(w.latitude, w.longitude, bus.latitude, bus.longitude);
+        if (dist <= 0.5) {
+          const ok = await sendToToken(
+            w.fcmToken,
+            fillTemplate(approachingTmpl.title, {}),
+            fillTemplate(approachingTmpl.body, {
+              busNumber: bus.busNumber,
+              regNumber: bus.registrationNumber,
+              stopName: w.stopName,
+            }),
+            { type: 'bus_approaching', busId: bus.id }
+          );
+          if (ok) {
+            await waitDoc.ref.update({
+              status: 'notified',
+              notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+          break; // Only first matching bus per student per cycle
+        }
+      }
+    }
+    return null;
+  });
+
+// â”€â”€ 2. Tap-out reminders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Runs every 5 minutes. Finds active device_bus_sessions that started more
+// than 30 minutes ago and sends a reminder FCM. Rate-limited to once per
+// 10 minutes per session.
+exports.sendTapOutReminders = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 5 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const tenMinAgo   = new Date(Date.now() - 10 * 60 * 1000);
+
+    const snap = await admin.firestore()
+      .collection('device_bus_sessions')
+      .where('status', '==', 'active')
+      .where('tappedInAt', '<=', thirtyMinAgo)
+      .get();
+
+    // Load template once before the loop.
+    const tapOutTmpl = await getTemplate(
+      'tap_out_reminder',
+      '\u23F0 Still on the bus?',
+      "You've been on the bus for {elapsedMin} minutes. Tap out when you arrive!"
+    );
+
+    for (const doc of snap.docs) {
+      const session = doc.data();
+
+      // Don't spam
+      if (session.lastReminderSentAt &&
+          session.lastReminderSentAt.toDate() > tenMinAgo) continue;
+
+      // Fetch device token
+      const tokenDoc = await admin.firestore()
+        .collection('device_tokens')
+        .doc(session.deviceId)
+        .get();
+      if (!tokenDoc.exists || !tokenDoc.data().fcmToken) continue;
+
+      const elapsedMin = Math.round(
+        (Date.now() - session.tappedInAt.toMillis()) / 60000
+      );
+      const ok = await sendToToken(
+        tokenDoc.data().fcmToken,
+        fillTemplate(tapOutTmpl.title, {}),
+        fillTemplate(tapOutTmpl.body, { elapsedMin }),
+        { type: 'tap_out_reminder', busId: session.busId }
+      );
+      if (ok) {
+        await doc.ref.update({
+          lastReminderSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+    return null;
+  });
+
+// â”€â”€ 3. Driver shift-end reminders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Runs every 10 minutes. If an active bus has had no GPS update for > 1 hour,
+// sends a reminder to the assigned driver to end their shift.
+// Rate-limited to once per 30 minutes per bus.
+exports.sendDriverShiftReminders = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 10 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const oneHourAgo    = new Date(Date.now() - 60 * 60 * 1000);
+    const thirtyMinAgo  = new Date(Date.now() - 30 * 60 * 1000);
+
+    const snap = await admin.firestore()
+      .collection('buses')
+      .where('isActive', '==', true)
+      .get();
+
+    // Load template once before the loop.
+    const shiftReminderTmpl = await getTemplate(
+      'shift_reminder',
+      '\uD83D\uDE8C Did you forget to end your shift?',
+      'Bus {busNumber} has been active with no GPS update for over an hour. Please end your shift if you are done.'
+    );
+
+    for (const doc of snap.docs) {
+      const bus = doc.data();
+      if (!bus.driverId) continue;
+
+      // Parse lastUpdated (stored as ISO string or Timestamp)
+      let lastUpdated;
+      if (bus.lastUpdated && typeof bus.lastUpdated.toDate === 'function') {
+        lastUpdated = bus.lastUpdated.toDate();
+      } else if (bus.lastUpdated) {
+        lastUpdated = new Date(bus.lastUpdated);
+      } else {
+        continue;
+      }
+      if (lastUpdated > oneHourAgo) continue; // Updated recently â€“ ok
+
+      // Rate-limit
+      if (bus.lastShiftReminderAt) {
+        const last = typeof bus.lastShiftReminderAt.toDate === 'function'
+          ? bus.lastShiftReminderAt.toDate()
+          : new Date(bus.lastShiftReminderAt);
+        if (last > thirtyMinAgo) continue;
+      }
+
+      // Fetch driver FCM token (saved under their userId in device_tokens)
+      const tokenDoc = await admin.firestore()
+        .collection('device_tokens')
+        .doc(bus.driverId)
+        .get();
+      if (!tokenDoc.exists || !tokenDoc.data().fcmToken) continue;
+
+      const ok = await sendToToken(
+        tokenDoc.data().fcmToken,
+        fillTemplate(shiftReminderTmpl.title, {}),
+        fillTemplate(shiftReminderTmpl.body, { busNumber: bus.busNumber }),
+        { type: 'shift_reminder', busId: doc.id }
+      );
+      if (ok) {
+        await doc.ref.update({
+          lastShiftReminderAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+    return null;
+  });
+
+// â”€â”€ 4. Auto-end stale active shifts (hard safeguard) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Runs every 5 minutes. If an active bus has no GPS update for > 15 minutes,
+// automatically ends the shift and force-completes active passenger sessions
+// and trips. This covers unexpected app termination where client cleanup may
+// never run.
+exports.autoEndStaleShifts = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 5 minutes')
+  .timeZone('Asia/Kuching')
+  .onRun(async (_context) => {
+    const staleBefore = new Date(Date.now() - 15 * 60 * 1000);
+    const db = admin.firestore();
+
+    const activeBusesSnap = await db
+      .collection('buses')
+      .where('isActive', '==', true)
+      .get();
+
+    for (const busDoc of activeBusesSnap.docs) {
+      const bus = busDoc.data();
+
+      // Parse lastUpdated (ISO string or Firestore Timestamp).
+      let lastUpdated = null;
+      if (bus.lastUpdated && typeof bus.lastUpdated.toDate === 'function') {
+        lastUpdated = bus.lastUpdated.toDate();
+      } else if (bus.lastUpdated) {
+        lastUpdated = new Date(bus.lastUpdated);
+      }
+
+      // If timestamp is missing/invalid, skip auto-ending to avoid false stops.
+      if (!lastUpdated || Number.isNaN(lastUpdated.getTime())) continue;
+      if (lastUpdated > staleBefore) continue;
+
+      const [sessionsSnap, tripsSnap] = await Promise.all([
+        db
+          .collection('device_bus_sessions')
+          .where('busId', '==', busDoc.id)
+          .where('status', '==', 'active')
+          .get(),
+        db
+          .collection('student_trips')
+          .where('busId', '==', busDoc.id)
+          .where('status', '==', 'active')
+          .get(),
+      ]);
+
+      const batch = db.batch();
+      batch.update(busDoc.ref, {
+        isActive: false,
+        currentOccupancy: 0,
+        activatedByAdminName: admin.firestore.FieldValue.delete(),
+        autoEndedBySafeguard: true,
+        autoEndedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      for (const sessionDoc of sessionsSnap.docs) {
+        batch.update(sessionDoc.ref, {
+          status: 'completed',
+          tappedOutAt: admin.firestore.FieldValue.serverTimestamp(),
+          closedByShiftEnd: true,
+          closedByStaleShiftSafeguard: true,
+        });
+      }
+
+      for (const tripDoc of tripsSnap.docs) {
+        batch.update(tripDoc.ref, {
+          status: 'completed',
+          offBoardedAt: admin.firestore.FieldValue.serverTimestamp(),
+          closedByShiftEnd: true,
+          closedByStaleShiftSafeguard: true,
+        });
+      }
+
+      await batch.commit();
+    }
+
+    return null;
+  });
+
+// â”€â”€ 5. Bus activated by admin â†’ notify assigned driver â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Triggers whenever a bus document is updated. When isActive flips false â†’ true
+// and a driver is assigned, sends an FCM push so the driver knows their shift
+// has been started remotely â€” even if the app is closed.
+exports.onBusActivated = functions
+  .region('asia-southeast1')
+  .firestore.document('buses/{busId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after  = change.after.data();
+
+    // Only act when isActive flips false â†’ true
+    if (before.isActive === after.isActive) return null;
+    if (!after.isActive) return null;
+
+    // Only notify when the activation was explicitly performed by an admin.
+    // Driver self-starts should not receive "Admin has activated..." pushes.
+    const adminName = typeof after.activatedByAdminName === 'string'
+      ? after.activatedByAdminName.trim()
+      : '';
+    if (!adminName) return null;
+
+    const driverId = after.driverId;
+    if (!driverId) return null;
+
+    // Look up the driver FCM token (saved under their userId)
+    const tokenDoc = await admin.firestore()
+      .collection('device_tokens')
+      .doc(driverId)
+      .get();
+    if (!tokenDoc.exists || !tokenDoc.data().fcmToken) return null;
+
+    const busNumber = after.busNumber || 'your bus';
+    const shiftStartedTmpl = await getTemplate(
+      'shift_started',
+      '\uD83D\uDE8C Your shift has started!',
+      '{adminName} has activated Bus {busNumber}. Tap to begin driving.'
+    );
+
+    await sendToToken(
+      tokenDoc.data().fcmToken,
+      fillTemplate(shiftStartedTmpl.title, {}),
+      fillTemplate(shiftStartedTmpl.body, { adminName, busNumber }),
+      {
+        type: 'shift_started',
+        busId: context.params.busId,
+        adminName: adminName,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      }
+    );
+    return null;
+  });
+
+// â”€â”€ 5. One-time migration: backfill reporterUid on legacy reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Maps old report.deviceId/studentId -> device_tokens/{deviceId}.userId.
+// Only fills records where reporterUid is missing, and only when a mapping
+// exists. Run repeatedly with nextCursor until exhausted.
+exports.backfillReportReporterUid = functions
+  .region('asia-southeast1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+
+    // Rate limit: max 2 calls per minute per admin UID
+    enforceRateLimit(context.auth.uid, { maxCalls: 2, windowMs: 60_000 });
+
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can run this migration.'
+      );
+    }
+
+    const limit = Math.min(Math.max(Number(data?.limit || 200), 1), 1000);
+    const dryRun = Boolean(data?.dryRun ?? true);
+    const cursor = typeof data?.cursor === 'string' && data.cursor.trim()
+      ? data.cursor.trim()
+      : null;
+
+    let query = admin
+      .firestore()
+      .collection('reports')
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(limit);
+    if (cursor) {
+      query = query.startAfter(cursor);
+    }
+
+    const snap = await query.get();
+    if (snap.empty) {
+      return {
+        processed: 0,
+        updated: 0,
+        skippedNoDeviceId: 0,
+        skippedNoMapping: 0,
+        skippedAlreadyOwned: 0,
+        dryRun,
+        done: true,
+        nextCursor: null,
+      };
+    }
+
+    let processed = 0;
+    let updated = 0;
+    let skippedNoDeviceId = 0;
+    let skippedNoMapping = 0;
+    let skippedAlreadyOwned = 0;
+
+    const batch = admin.firestore().batch();
+
+    for (const doc of snap.docs) {
+      processed += 1;
+      const report = doc.data();
+
+      if (report.reporterUid) {
+        skippedAlreadyOwned += 1;
+        continue;
+      }
+
+      const deviceId = report.deviceId || report.studentId;
+      if (!deviceId || typeof deviceId !== 'string') {
+        skippedNoDeviceId += 1;
+        continue;
+      }
+
+      const tokenDoc = await admin
+        .firestore()
+        .collection('device_tokens')
+        .doc(deviceId)
+        .get();
+
+      const mappedUid = tokenDoc.exists ? tokenDoc.data()?.userId : null;
+      if (!mappedUid || typeof mappedUid !== 'string') {
+        skippedNoMapping += 1;
+        continue;
+      }
+
+      updated += 1;
+      if (!dryRun) {
+        batch.update(doc.ref, { reporterUid: mappedUid });
+      }
+    }
+
+    if (!dryRun && updated > 0) {
+      await batch.commit();
+    }
+
+    const lastDoc = snap.docs[snap.docs.length - 1];
+    const nextCursor = lastDoc.id;
+
+    return {
+      processed,
+      updated,
+      skippedNoDeviceId,
+      skippedNoMapping,
+      skippedAlreadyOwned,
+      dryRun,
+      done: snap.docs.length < limit,
+      nextCursor,
+    };
+  });
+
+// â”€â”€ 6. Route leg distance precompute for ETA cost control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function _sameStopIds(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (String(a[i]) !== String(b[i])) return false;
+  }
+  return true;
+}
+
+function _fallbackLegMeters(orderedStops) {
+  const meters = [];
+  for (let i = 0; i < orderedStops.length - 1; i += 1) {
+    const km = haversineKm(
+      orderedStops[i].latitude,
+      orderedStops[i].longitude,
+      orderedStops[i + 1].latitude,
+      orderedStops[i + 1].longitude
+    );
+    meters.push(Math.round(km * 1000));
+  }
+  return meters;
+}
+
+async function _fetchDirectionsLegMeters(orderedStops) {
+  const key = process.env.GOOGLE_MAPS_API_KEY || '';
+  if (!key || orderedStops.length < 2) {
+    return null;
+  }
+
+  const origin = `${orderedStops[0].latitude},${orderedStops[0].longitude}`;
+  const destination =
+    `${orderedStops[orderedStops.length - 1].latitude},${orderedStops[orderedStops.length - 1].longitude}`;
+  const waypointList = orderedStops.length > 2
+    ? orderedStops
+        .slice(1, orderedStops.length - 1)
+        .map((s) => `${s.latitude},${s.longitude}`)
+        .join('|')
+    : null;
+
+  const url = new URL('https://maps.googleapis.com/maps/api/directions/json');
+  url.searchParams.set('origin', origin);
+  url.searchParams.set('destination', destination);
+  url.searchParams.set('mode', 'driving');
+  url.searchParams.set('key', key);
+  if (waypointList) {
+    url.searchParams.set('waypoints', `optimize:false|${waypointList}`);
+  }
+
+  const res = await fetch(url, { method: 'GET' });
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  if (data.status !== 'OK' || !Array.isArray(data.routes) || data.routes.length === 0) {
+    return null;
+  }
+
+  const legs = data.routes[0]?.legs;
+  if (!Array.isArray(legs) || legs.length !== orderedStops.length - 1) {
+    return null;
+  }
+
+  return legs.map((leg) => Number(leg?.distance?.value || 0));
+}
+
+async function recomputeRouteLegDistances(routeId) {
+  const routeRef = admin.firestore().collection('routes').doc(routeId);
+  const routeDoc = await routeRef.get();
+  if (!routeDoc.exists) return;
+
+  const route = routeDoc.data();
+  const stopIds = Array.isArray(route?.stopIds) ? route.stopIds : [];
+
+  if (stopIds.length < 2) {
+    await routeRef.update({
+      legDistancesMeters: [],
+      legDistanceSource: 'none',
+      legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      legDistanceStopIds: stopIds,
+    });
+    return;
+  }
+
+  const stopDocs = await Promise.all(
+    stopIds.map((stopId) => admin.firestore().collection('bus_stops').doc(String(stopId)).get())
+  );
+
+  const orderedStops = [];
+  for (let i = 0; i < stopDocs.length; i += 1) {
+    const doc = stopDocs[i];
+    if (!doc.exists) continue;
+    const s = doc.data();
+    const lat = Number(s?.latitude);
+    const lng = Number(s?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    orderedStops.push({
+      stopId: stopIds[i],
+      latitude: lat,
+      longitude: lng,
+    });
+  }
+
+  if (orderedStops.length < 2) {
+    await routeRef.update({
+      legDistancesMeters: [],
+      legDistanceSource: 'none',
+      legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      legDistanceStopIds: stopIds,
+    });
+    return;
+  }
+
+  let legDistancesMeters = null;
+  let source = 'haversine';
+  try {
+    legDistancesMeters = await _fetchDirectionsLegMeters(orderedStops);
+    if (Array.isArray(legDistancesMeters) && legDistancesMeters.length > 0) {
+      source = 'directions';
+    }
+  } catch (_) {
+    legDistancesMeters = null;
+  }
+
+  if (!Array.isArray(legDistancesMeters) || legDistancesMeters.length === 0) {
+    legDistancesMeters = _fallbackLegMeters(orderedStops);
+    source = 'haversine';
+  }
+
+  await routeRef.update({
+    legDistancesMeters,
+    legDistanceSource: source,
+    legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    legDistanceStopIds: orderedStops.map((s) => s.stopId),
+  });
+}
+
+exports.onRouteStopsChangedRecomputeLegs = functions
+  .region('asia-southeast1')
+  .firestore.document('routes/{routeId}')
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) return null;
+
+    const before = change.before.exists ? change.before.data() : null;
+    const after = change.after.data();
+    const beforeStopIds = Array.isArray(before?.stopIds) ? before.stopIds : [];
+    const afterStopIds = Array.isArray(after?.stopIds) ? after.stopIds : [];
+
+    if (change.before.exists && _sameStopIds(beforeStopIds, afterStopIds)) {
+      return null;
+    }
+
+    await recomputeRouteLegDistances(context.params.routeId);
+    return null;
+  });
+
+exports.onBusStopChangedRecomputeLegs = functions
+  .region('asia-southeast1')
+  .firestore.document('bus_stops/{stopId}')
+  .onWrite(async (change, context) => {
+    const stopId = context.params.stopId;
+    if (!stopId) return null;
+
+    const routesSnap = await admin
+      .firestore()
+      .collection('routes')
+      .where('stopIds', 'array-contains', stopId)
+      .get();
+
+    if (routesSnap.empty) return null;
+
+    for (const doc of routesSnap.docs) {
+      await recomputeRouteLegDistances(doc.id);
+    }
+
+    return null;
+  });
+
+exports.recomputeAllRouteLegDistances = functions
+  .region('asia-southeast1')
+  .https.onCall(async (_data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Authentication required.'
+      );
+    }
+    enforceRateLimit(context.auth.uid, { maxCalls: 2, windowMs: 60_000 });
+
+    const requesterDoc = await admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .get();
+
+    if (!requesterDoc.exists || requesterDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can recompute route legs.'
+      );
+    }
+
+    const routesSnap = await admin.firestore().collection('routes').get();
+    let processed = 0;
+    for (const doc of routesSnap.docs) {
+      await recomputeRouteLegDistances(doc.id);
+      processed += 1;
+    }
+
+    return { success: true, processed };
+  });
+
+
+

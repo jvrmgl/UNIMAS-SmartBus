@@ -1249,3 +1249,124 @@ exports.recomputeAllRouteLegDistances = functions
   });
 
 
+exports.updateLiveEtaJob = functions
+  .region('asia-southeast1')
+  .pubsub.schedule('every 2 minutes')
+  .onRun(async (context) => {
+    const key = process.env.GOOGLE_MAPS_API_KEY || '';
+    if (!key) {
+      console.warn('GOOGLE_MAPS_API_KEY is not set. Skipping live ETA update.');
+      return null;
+    }
+
+    const busesSnapshot = await admin.firestore().collection('buses').where('isActive', '==', true).get();
+    if (busesSnapshot.empty) return null;
+
+    const routesCache = new Map();
+    const stopsCache = new Map();
+
+    const fetchPromises = busesSnapshot.docs.map(async (busDoc) => {
+      const busData = busDoc.data();
+      const origin = `${busData.latitude},${busData.longitude}`;
+      
+      if (!busData.assignedRoute || (busData.latitude === 0 && busData.longitude === 0)) {
+        return;
+      }
+
+      let routeStops = routesCache.get(busData.assignedRoute);
+      if (!routeStops) {
+        const routeDoc = await admin.firestore().collection('routes').doc(busData.assignedRoute).get();
+        if (!routeDoc.exists) return;
+        routeStops = routeDoc.data().orderedStops || [];
+        routesCache.set(busData.assignedRoute, routeStops);
+      }
+
+      if (routeStops.length === 0) return;
+
+      const stopMap = new Map();
+      for (const stopId of routeStops) {
+        if (!stopMap.has(stopId)) {
+           let coord = stopsCache.get(stopId);
+           if (!coord) {
+             const stopDoc = await admin.firestore().collection('bus_stops').doc(stopId).get();
+             if (stopDoc.exists) {
+               const sd = stopDoc.data();
+               coord = `${sd.latitude},${sd.longitude}`;
+               stopsCache.set(stopId, coord);
+             }
+           }
+           if (coord) stopMap.set(stopId, coord);
+        }
+      }
+
+      const destinationsArray = [];
+      const stopIdsArray = [];
+      for (const [sId, coord] of stopMap.entries()) {
+        destinationsArray.push(coord);
+        stopIdsArray.push(sId);
+      }
+
+      if (destinationsArray.length === 0) return;
+
+      try {
+        const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json');
+        url.searchParams.set('origins', origin);
+        url.searchParams.set('destinations', destinationsArray.join('|'));
+        url.searchParams.set('departure_time', 'now');
+        url.searchParams.set('mode', 'driving');
+        url.searchParams.set('key', key);
+
+        const response = await fetch(url.toString());
+        const json = await response.json();
+
+        if (json.status !== 'OK' || !json.rows || json.rows.length === 0) {
+          console.warn(`Distance Matrix failed for bus ${busDoc.id}: ${json.status}`);
+          return;
+        }
+
+        const elements = json.rows[0].elements;
+        const liveEtaByStopId = {};
+
+        for (let i = 0; i < elements.length; i++) {
+          const el = elements[i];
+          if (el.status === 'OK' && el.duration_in_traffic) {
+            liveEtaByStopId[stopIdsArray[i]] = Math.ceil(el.duration_in_traffic.value / 60);
+          } else if (el.status === 'OK' && el.duration) {
+            liveEtaByStopId[stopIdsArray[i]] = Math.ceil(el.duration.value / 60);
+          }
+        }
+
+        if (Object.keys(liveEtaByStopId).length > 0) {
+          await busDoc.ref.update({
+            liveEtaByStopId,
+            liveEtaUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            liveEtaSource: 'traffic'
+          });
+        }
+      } catch (err) {
+        console.error(`Error calculating live ETA for bus ${busDoc.id}:`, err);
+      }
+    });
+
+    await Promise.all(fetchPromises);
+    return null;
+  });
+exports.onRouteWrite = functions
+  .region('asia-southeast1')
+  .firestore.document('routes/{routeId}')
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) return null; // Route deleted
+
+    const beforeData = change.before.data() || {};
+    const afterData = change.after.data() || {};
+
+    const beforeStops = JSON.stringify(beforeData.stopIds || []);
+    const afterStops = JSON.stringify(afterData.stopIds || []);
+
+    // Only recompute if the stop IDs array has changed
+    if (beforeStops !== afterStops) {
+      console.log(\Route \ stops changed. Recomputing leg distances automatically.\);
+      await recomputeRouteLegDistances(context.params.routeId);
+    }
+    return null;
+  });
