@@ -117,10 +117,10 @@ lib/
    flutterfire configure
    ```
 
-4. **Add Google Maps API Key**
-   - Update `lib/constants/app_constants.dart` with your Google Maps API key
-   - For Android: Update `android/app/src/main/AndroidManifest.xml`
-   - For iOS: Update `ios/Runner/Info.plist`
+4. **Add Google Maps Web Services Key (Dart defines)**
+   - Copy `env.json.example` to `env.json` and set `GOOGLE_MAPS_API_KEY`
+   - Run with `flutter run --dart-define-from-file=env.json`
+   - For iOS map rendering, continue with the platform key setup below
 
 5. **Update Firebase Configuration**
    - The `flutterfire configure` command generates `lib/firebase_options.dart`
@@ -143,7 +143,7 @@ lib/
 
 **Development**
 ```bash
-flutter run
+flutter run --dart-define-from-file=env.json
 ```
 
 **Release Build**

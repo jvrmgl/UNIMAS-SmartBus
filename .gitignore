@@ -44,6 +44,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Local Android config (contains API keys)
+android/local.properties
+
 # Firebase / API key files
 # google-services.json and firebase_options.dart are safe to commit (project IDs only, no secrets)
 # Real security comes from Firebase security rules
@@ -51,6 +54,8 @@ ios/Runner/GoogleService-Info.plist
 .env
 *.env
 .env.*
+env.json
+env.local.json
 
 # Local Python env (used for local scripts/tools only)
 .venv/

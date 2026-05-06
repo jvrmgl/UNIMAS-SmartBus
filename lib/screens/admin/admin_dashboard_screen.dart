@@ -151,7 +151,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                     child: Column(
                       children: [
                         Consumer2<BusProvider, RouteProvider>(
@@ -194,7 +194,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                             ),
                                             Container(
                                               width: 1,
-                                              height: 64,
+                                              height: 50,
                                               color: Theme.of(context).colorScheme.outlineVariant,
                                             ),
                                             Expanded(
@@ -224,7 +224,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                             ),
                                             Container(
                                               width: 1,
-                                              height: 64,
+                                              height: 50,
                                               color: Theme.of(context).colorScheme.outlineVariant,
                                             ),
                                             Expanded(
@@ -239,16 +239,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 12),
+                                        const SizedBox(height: 6),
                                         Row(
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           children: [
-                                            Icon(Icons.touch_app, size: 14, color: Colors.grey[600]),
-                                            const SizedBox(width: 6),
+                                            Icon(Icons.touch_app, size: 12, color: Colors.grey[600]),
+                                            const SizedBox(width: 4),
                                             Text(
                                               'Tap to View Analytics',
                                               style: TextStyle(
-                                                fontSize: 12,
+                                                fontSize: 10,
                                                 color: Colors.grey[600],
                                                 fontStyle: FontStyle.italic,
                                               ),
@@ -287,9 +287,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 crossAxisCount: 3,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 8,
+                mainAxisSpacing: 6,
                 crossAxisSpacing: 8,
-                childAspectRatio: 1.05,
+                childAspectRatio: 1.25,
                 children: [
                   FadeSlideIn(
                     delay: const Duration(milliseconds: 0),
@@ -378,35 +378,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required Color color,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: Icon(icon, color: color, size: 18),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             value,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: color,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-              height: 1.3,
+              height: 1.2,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -427,23 +427,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.13),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 26, color: color),
+                child: Icon(icon, size: 24, color: color),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,

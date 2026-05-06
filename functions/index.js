@@ -1061,7 +1061,7 @@ function _fallbackLegMeters(orderedStops) {
   return meters;
 }
 
-async function _fetchDirectionsLegMeters(orderedStops) {
+async function _fetchDirectionsRouteData(orderedStops) {
   const key = process.env.GOOGLE_MAPS_API_KEY || '';
   if (!key || orderedStops.length < 2) {
     return null;
@@ -1094,12 +1094,16 @@ async function _fetchDirectionsLegMeters(orderedStops) {
     return null;
   }
 
-  const legs = data.routes[0]?.legs;
-  if (!Array.isArray(legs) || legs.length !== orderedStops.length - 1) {
-    return null;
-  }
+  const route = data.routes[0] || {};
+  const legs = route.legs;
+  const legDistancesMeters = Array.isArray(legs) &&
+      legs.length === orderedStops.length - 1
+    ? legs.map((leg) => Number(leg?.distance?.value || 0))
+    : null;
+  const encodedPolyline = route?.overview_polyline?.points || null;
 
-  return legs.map((leg) => Number(leg?.distance?.value || 0));
+  if (!legDistancesMeters && !encodedPolyline) return null;
+  return { legDistancesMeters, encodedPolyline };
 }
 
 async function recomputeRouteLegDistances(routeId) {
@@ -1116,6 +1120,10 @@ async function recomputeRouteLegDistances(routeId) {
       legDistanceSource: 'none',
       legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       legDistanceStopIds: stopIds,
+      routePolylineSource: 'none',
+      routePolylineUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      routePolylineStopIds: stopIds,
+      routePolyline: admin.firestore.FieldValue.delete(),
     });
     return;
   }
@@ -1145,19 +1153,32 @@ async function recomputeRouteLegDistances(routeId) {
       legDistanceSource: 'none',
       legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       legDistanceStopIds: stopIds,
+      routePolylineSource: 'none',
+      routePolylineUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      routePolylineStopIds: stopIds,
+      routePolyline: admin.firestore.FieldValue.delete(),
     });
     return;
   }
 
   let legDistancesMeters = null;
   let source = 'haversine';
+  let routePolyline = null;
+  let routePolylineSource = 'none';
   try {
-    legDistancesMeters = await _fetchDirectionsLegMeters(orderedStops);
-    if (Array.isArray(legDistancesMeters) && legDistancesMeters.length > 0) {
+    const routeData = await _fetchDirectionsRouteData(orderedStops);
+    if (Array.isArray(routeData?.legDistancesMeters) &&
+        routeData.legDistancesMeters.length > 0) {
+      legDistancesMeters = routeData.legDistancesMeters;
       source = 'directions';
+    }
+    if (routeData?.encodedPolyline) {
+      routePolyline = routeData.encodedPolyline;
+      routePolylineSource = 'directions';
     }
   } catch (_) {
     legDistancesMeters = null;
+    routePolyline = null;
   }
 
   if (!Array.isArray(legDistancesMeters) || legDistancesMeters.length === 0) {
@@ -1165,12 +1186,23 @@ async function recomputeRouteLegDistances(routeId) {
     source = 'haversine';
   }
 
-  await routeRef.update({
+  const updatePayload = {
     legDistancesMeters,
     legDistanceSource: source,
     legDistanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
     legDistanceStopIds: orderedStops.map((s) => s.stopId),
-  });
+    routePolylineSource,
+    routePolylineUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    routePolylineStopIds: orderedStops.map((s) => s.stopId),
+  };
+
+  if (routePolyline) {
+    updatePayload.routePolyline = routePolyline;
+  } else {
+    updatePayload.routePolyline = admin.firestore.FieldValue.delete();
+  }
+
+  await routeRef.update(updatePayload);
 }
 
 exports.onRouteStopsChangedRecomputeLegs = functions
@@ -1365,7 +1397,7 @@ exports.onRouteWrite = functions
 
     // Only recompute if the stop IDs array has changed
     if (beforeStops !== afterStops) {
-      console.log(\Route \ stops changed. Recomputing leg distances automatically.\);
+      console.log('Route stops changed. Recomputing leg distances automatically.');
       await recomputeRouteLegDistances(context.params.routeId);
     }
     return null;

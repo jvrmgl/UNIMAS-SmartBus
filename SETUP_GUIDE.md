@@ -89,13 +89,23 @@ Edit `ios/Runner/Info.plist` and add:
 <string>YOUR_API_KEY_HERE</string>
 ```
 
-### 3.5 Update App Constants
+### 3.5 Configure Dart Defines (Web Services)
 
-Update `lib/constants/app_constants.dart`:
+Create `env.json` (copy from `env.json.example`) and set:
 
-```dart
-static const String googleMapsApiKey = 'YOUR_API_KEY_HERE';
+```json
+{
+  "GOOGLE_MAPS_API_KEY": "YOUR_KEY_HERE"
+}
 ```
+
+Then run with:
+
+```bash
+flutter run --dart-define-from-file=env.json
+```
+
+This key is used for Directions/Places/Geocoding HTTP calls from Flutter.
 
 ## Step 4: Environment Setup
 
@@ -117,25 +127,25 @@ flutter pub get
 ### 5.1 Run on Android Emulator
 
 ```bash
-flutter run -d emulator-5554
+flutter run --dart-define-from-file=env.json -d emulator-5554
 ```
 
 Or for a specific device:
 
 ```bash
-flutter run
+flutter run --dart-define-from-file=env.json
 ```
 
 ### 5.2 Run on iOS Simulator
 
 ```bash
-flutter run -d simulator
+flutter run --dart-define-from-file=env.json -d simulator
 ```
 
 ### 5.3 Run on Physical Device
 
 ```bash
-flutter run
+flutter run --dart-define-from-file=env.json
 ```
 
 ## Step 6: Firebase Database Rules

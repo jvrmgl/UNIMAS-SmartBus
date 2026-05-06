@@ -110,12 +110,19 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
         .toList();
     if (stopPoints.isEmpty) return;
 
-    // Fetch road-following polyline via Directions API; fall back to straight lines
+    // Prefer cached polyline from backend; fall back to Directions API or straight lines
     List<LatLng> points;
-    try {
-      points = await _fetchRoutePolyline(stopPoints);
-    } catch (_) {
-      points = stopPoints;
+    if (route.routePolyline != null && route.routePolyline!.isNotEmpty) {
+      points = _decodePolyline(route.routePolyline!);
+      if (points.isEmpty) {
+        points = stopPoints;
+      }
+    } else {
+      try {
+        points = await _fetchRoutePolyline(stopPoints);
+      } catch (_) {
+        points = stopPoints;
+      }
     }
 
     if (!mounted) return;
@@ -162,6 +169,36 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
 
     if (stopPoints.length < 2) return stopPoints;
 
+    // Prefer a single request when within waypoint limits.
+    if (stopPoints.length <= 25) {
+      final points = await _fetchDirectionsPath(stopPoints);
+      if (points.isNotEmpty) return points;
+    }
+
+    // Fallback: stitch per-leg polylines to avoid waypoint limits.
+    final List<LatLng> stitched = [];
+    for (var i = 0; i < stopPoints.length - 1; i++) {
+      final segment =
+          await _fetchDirectionsLeg(stopPoints[i], stopPoints[i + 1]);
+      if (segment.isEmpty) {
+        if (stitched.isEmpty || stitched.last != stopPoints[i]) {
+          stitched.add(stopPoints[i]);
+        }
+        stitched.add(stopPoints[i + 1]);
+        continue;
+      }
+
+      if (stitched.isNotEmpty && segment.first == stitched.last) {
+        stitched.addAll(segment.skip(1));
+      } else {
+        stitched.addAll(segment);
+      }
+    }
+
+    return stitched.isEmpty ? stopPoints : stitched;
+  }
+
+  Future<List<LatLng>> _fetchDirectionsPath(List<LatLng> stopPoints) async {
     final origin =
         '${stopPoints.first.latitude},${stopPoints.first.longitude}';
     final destination =
@@ -183,16 +220,49 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
 
     final uri =
         Uri.https('maps.googleapis.com', '/maps/api/directions/json', params);
-    final response =
-        await http.get(uri).timeout(const Duration(seconds: 10));
-    if (response.statusCode != 200) return stopPoints;
+    try {
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return [];
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (data['status'] != 'OK') return stopPoints;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (data['status'] != 'OK') return [];
 
-    final encoded =
-        data['routes'][0]['overview_polyline']['points'] as String;
-    return _decodePolyline(encoded);
+      final encoded =
+          data['routes'][0]['overview_polyline']['points'] as String;
+      return _decodePolyline(encoded);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<LatLng>> _fetchDirectionsLeg(
+    LatLng origin,
+    LatLng destination,
+  ) async {
+    final params = <String, String>{
+      'origin': '${origin.latitude},${origin.longitude}',
+      'destination': '${destination.latitude},${destination.longitude}',
+      'mode': 'driving',
+      'key': AppConstants.googleMapsApiKey,
+    };
+
+    final uri =
+        Uri.https('maps.googleapis.com', '/maps/api/directions/json', params);
+    try {
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (data['status'] != 'OK') return [];
+
+      final encoded =
+          data['routes'][0]['overview_polyline']['points'] as String;
+      return _decodePolyline(encoded);
+    } catch (_) {
+      return [];
+    }
   }
 
   List<LatLng> _decodePolyline(String encoded) {

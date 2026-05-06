@@ -1,30 +1,25 @@
 # UNIMAS SmartBus Key Map
 
-Last updated: 2026-04-11
+Last updated: 2026-05-06
 
 ## Active Key Assignments
 
-### 1) Android App Map Key
+### 1) Unified Maps + Web Services Key
 - Key label: Map Functions (New)
 - Key value suffix: ...jESek
 - Full key starts with: AIzaSyCsy...
 - Project: UNIMAS SmartBus
-- Intended use: Android map rendering in app
-- Restriction model: Android apps
-- API scope: Maps SDK for Android (and only app-side APIs you need)
-- Local config location: android/local.properties
+- Intended use: map rendering + Directions/Places/Geocoding HTTP calls + Cloud Functions
+- Restriction model: None (application restriction)
+- API scope: Maps SDK for Android/iOS, Directions API, Places API (New), Geocoding API
+- Local config locations: android/local.properties, env.json, functions/.env.unimas-smartbus
 - Variable: GOOGLE_MAPS_API_KEY
 
-### 2) Cloud Functions Places Key
+### 2) Legacy Key (Retired)
 - Key label: Places API (New)
 - Key value suffix: ...uxJq8
 - Full key starts with: AIzaSyAwNW...
-- Project: UNIMAS SmartBus
-- Intended use: server-side Places API (New) calls in Firebase Functions
-- Restriction model: None (application restriction)
-- API scope: Places API (New)
-- Local config location: functions/.env.unimas-smartbus
-- Variable: GOOGLE_MAPS_API_KEY
+- Status: Deprecated (safe to delete if unified key works everywhere)
 
 ### 3) Legacy Key (Retired)
 - Key label: Maps API (Old)
@@ -34,18 +29,20 @@ Last updated: 2026-04-11
 ## Current File Mapping (This Workspace)
 
 - android/local.properties -> AIzaSyCsy...jESek
-- functions/.env.unimas-smartbus -> AIzaSyAwNW...uxJq8
+- env.json -> AIzaSyCsy...jESek
+- functions/.env.unimas-smartbus -> AIzaSyCsy...jESek
 
-## Why Two Keys Are Required
+## Why Teams Sometimes Split Keys
 
-- Android-restricted keys cannot be used by server-side HTTP requests.
-- Places API (New) calls from Cloud Functions require a server-side key that is not Android-app restricted.
+- Android/iOS SDK keys can be app-restricted, which blocks HTTP web services.
+- Separate keys let you isolate quota and apply least-privilege restrictions.
 
 ## Second Device Sync Steps
 
 1. Set android/local.properties GOOGLE_MAPS_API_KEY to AIzaSyCsy...jESek.
-2. Set functions/.env.unimas-smartbus GOOGLE_MAPS_API_KEY to AIzaSyAwNW...uxJq8.
-3. Deploy backend after updating env:
+2. Set env.json GOOGLE_MAPS_API_KEY to AIzaSyCsy...jESek.
+3. Set functions/.env.unimas-smartbus GOOGLE_MAPS_API_KEY to AIzaSyCsy...jESek.
+4. Deploy backend after updating env:
 
    firebase.cmd deploy --only functions:placesAutocompleteNew,functions:searchPlaceCoordinatesNew --project unimas-smartbus --force --non-interactive
 
@@ -53,4 +50,4 @@ Last updated: 2026-04-11
 
 - Do not commit real secrets to source control.
 - If any key is exposed publicly, rotate it and update this map.
-- Keep key roles separate (app key vs server key) to avoid API_KEY_ANDROID_APP_BLOCKED errors.
+- If you re-add restrictions later, consider splitting keys again.

@@ -34,6 +34,7 @@ class _ReportScreenState extends State<ReportScreen>
   final TextEditingController _busController = TextEditingController();
   String? _prefilledBusId; // Store actual busId when pre-filled from trip
   String? _prefilledRouteId; // Store actual routeId when pre-filled from trip
+  bool _isTripPrefill = false;
   bool _isSubmitting = false;
   bool _isUploading = false;
   List<XFile> _selectedImages = [];
@@ -64,7 +65,11 @@ class _ReportScreenState extends State<ReportScreen>
     
     // Get pre-filled data from route arguments (if navigating from trip)
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    
+
+    if (args != null && !_isTripPrefill) {
+      _isTripPrefill = true;
+    }
+
     if (args != null && _busController.text.isEmpty) {
       // Only fill once on first load
       if (args['busId'] != null) {
@@ -259,6 +264,7 @@ class _ReportScreenState extends State<ReportScreen>
         const SizedBox(height: 16),
         TextField(
           controller: _routeController,
+          enabled: !_isTripPrefill,
           decoration: const InputDecoration(
             labelText: 'Route ID (optional)',
           ),
@@ -266,6 +272,7 @@ class _ReportScreenState extends State<ReportScreen>
         const SizedBox(height: 16),
         TextField(
           controller: _busController,
+          enabled: !_isTripPrefill,
           decoration: const InputDecoration(
             labelText: 'Bus ID (optional)',
           ),
