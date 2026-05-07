@@ -163,8 +163,15 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   }
 
   Future<List<LatLng>> _fetchRoutePolyline(List<LatLng> stopPoints) async {
-    if (!AppConstants.enableDirectionsApi ||
-        AppConstants.googleMapsApiKey.isEmpty) {
+    // Only attempt API call if Directions API is enabled AND API key is available.
+    // If API key is not available, skip and use straight lines.
+    // In production, routes should have polylines pre-cached server-side.
+    if (!AppConstants.enableDirectionsApi) {
+      return stopPoints;
+    }
+    
+    if (AppConstants.googleMapsApiKey.isEmpty) {
+      // API key not injected at runtime — polylines should be server-cached
       return stopPoints;
     }
 

@@ -1280,7 +1280,6 @@ exports.recomputeAllRouteLegDistances = functions
     return { success: true, processed };
   });
 
-
 exports.updateLiveEtaJob = functions
   .region('asia-southeast1')
   .pubsub.schedule('every 2 minutes')
@@ -1381,24 +1380,5 @@ exports.updateLiveEtaJob = functions
     });
 
     await Promise.all(fetchPromises);
-    return null;
-  });
-exports.onRouteWrite = functions
-  .region('asia-southeast1')
-  .firestore.document('routes/{routeId}')
-  .onWrite(async (change, context) => {
-    if (!change.after.exists) return null; // Route deleted
-
-    const beforeData = change.before.data() || {};
-    const afterData = change.after.data() || {};
-
-    const beforeStops = JSON.stringify(beforeData.stopIds || []);
-    const afterStops = JSON.stringify(afterData.stopIds || []);
-
-    // Only recompute if the stop IDs array has changed
-    if (beforeStops !== afterStops) {
-      console.log('Route stops changed. Recomputing leg distances automatically.');
-      await recomputeRouteLegDistances(context.params.routeId);
-    }
     return null;
   });
