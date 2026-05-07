@@ -6,6 +6,7 @@ import '../../models/route_model.dart';
 import '../../models/bus_stop_model.dart';
 import '../../constants/app_constants.dart';
 import '../../services/firestore_service.dart';
+import '../../utils/map_style.dart';
 
 class RoutesManagementScreen extends StatefulWidget {
   const RoutesManagementScreen({super.key});
@@ -913,6 +914,7 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: GoogleMap(
+                        style: mapStyleForBrightness(Theme.of(context).brightness),
                         initialCameraPosition: CameraPosition(
                           target: selectedLatLng,
                           zoom: 15,
@@ -1106,6 +1108,7 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
           );
 
           final googleMap = GoogleMap(
+            style: mapStyleForBrightness(Theme.of(context).brightness),
             initialCameraPosition: const CameraPosition(
               target: LatLng(1.4651, 110.4277),
               zoom: AppConstants.defaultMapZoom,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -34,6 +35,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   final FirestoreService _firestoreService = FirestoreService();
   final DeviceService _deviceService = DeviceService();
   DashboardNavProvider? _dashboardNavProvider;
+  final CarouselSliderController _scheduleCarouselController =
+      CarouselSliderController();
+  Timer? _scheduleAutoTimer;
+  int _scheduleCarouselIndex = 0;
+  bool _scheduleCarouselForward = true;
+  int _scheduleImageCount = 0;
   // no expansion state needed
 
   @override
@@ -65,6 +72,41 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   }
 
   BusProvider? _busProviderRef;
+
+  void _configureScheduleAutoPlay(int itemCount) {
+    if (_scheduleImageCount == itemCount) return;
+    _scheduleImageCount = itemCount;
+    _scheduleAutoTimer?.cancel();
+    if (itemCount <= 1) return;
+
+    _scheduleCarouselIndex =
+      _scheduleCarouselIndex.clamp(0, itemCount - 1).toInt();
+    _scheduleCarouselForward = _scheduleCarouselIndex == 0;
+
+    _scheduleAutoTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted || _scheduleImageCount <= 1) return;
+
+      var nextIndex = _scheduleCarouselForward
+          ? _scheduleCarouselIndex + 1
+          : _scheduleCarouselIndex - 1;
+
+      if (nextIndex >= _scheduleImageCount) {
+        _scheduleCarouselForward = false;
+        nextIndex = _scheduleImageCount - 2;
+      } else if (nextIndex < 0) {
+        _scheduleCarouselForward = true;
+        nextIndex = 1;
+      }
+
+      if (nextIndex < 0 || nextIndex >= _scheduleImageCount) return;
+      _scheduleCarouselIndex = nextIndex;
+      _scheduleCarouselController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
 
   Future<void> _openBusDetailsGuarded(Bus selectedBus) async {
     final deviceId = await _deviceService.getDeviceId();
@@ -121,6 +163,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   void dispose() {
     _dashboardNavProvider?.removeListener(_onNavChange);
     _busProviderRef?.stopListeningToBuses();
+    _scheduleAutoTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -332,18 +375,32 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
               );
             }
 
+            _configureScheduleAutoPlay(scheduleImages.length);
+
             return Card(
               elevation: 4,
               clipBehavior: Clip.antiAlias,
               child: CarouselSlider(
+                carouselController: _scheduleCarouselController,
                 options: CarouselOptions(
                   height: 400,
                   viewportFraction: 1.0,
-                  enableInfiniteScroll: scheduleImages.length > 1,
-                  autoPlay: scheduleImages.length > 1,
+                  enableInfiniteScroll: false,
+                  autoPlay: false,
                   autoPlayInterval: const Duration(seconds: 10),
                   autoPlayAnimationDuration: const Duration(milliseconds: 800),
                   enlargeCenterPage: false,
+                  onPageChanged: (index, reason) {
+                    final previousIndex = _scheduleCarouselIndex;
+                    _scheduleCarouselIndex = index;
+                    if (reason == CarouselPageChangedReason.manual) {
+                      _scheduleCarouselForward = index >= previousIndex;
+                    }
+                    if (index <= 0) _scheduleCarouselForward = true;
+                    if (index >= scheduleImages.length - 1) {
+                      _scheduleCarouselForward = false;
+                    }
+                  },
                 ),
                 items: scheduleImages.map((scheduleImage) {
                   return _buildNetworkScheduleImage(
@@ -1386,37 +1443,49 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
               child: Stack(
                 children: [
                   Center(
-                    child: InteractiveViewer(
-                      minScale: 1,
-                      maxScale: 4,
-                      child: Image.network(
-                        imageUrl,
-                        fit: BoxFit.contain,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.broken_image,
-                                size: 64,
-                                color: Colors.white70,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Unable to load $title',
-                                style: const TextStyle(color: Colors.white70),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          );
-                        },
-                      ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return InteractiveViewer(
+                          minScale: 1,
+                          maxScale: 6,
+                          boundaryMargin: const EdgeInsets.all(120),
+                          constrained: false,
+                          child: SizedBox(
+                            width: constraints.maxWidth,
+                            height: constraints.maxHeight,
+                            child: Image.network(
+                              imageUrl,
+                              fit: BoxFit.contain,
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.broken_image,
+                                      size: 64,
+                                      color: Colors.white70,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Unable to load $title',
+                                      style:
+                                          const TextStyle(color: Colors.white70),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Positioned(
@@ -1438,9 +1507,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
   }
 
   Widget _buildNetworkScheduleImage(String imageUrl, String title) {
+    final surfaceColor = Theme.of(context).colorScheme.surface;
+    final placeholderColor =
+      Theme.of(context).colorScheme.surfaceContainerHighest;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.grey.shade200,
+        color: surfaceColor,
       ),
       child: SizedBox(
         width: double.infinity,
@@ -1455,7 +1527,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                   loadingBuilder: (context, child, loadingProgress) {
                     if (loadingProgress == null) return child;
                     return ColoredBox(
-                      color: Colors.grey.shade100,
+                      color: placeholderColor,
                       child: Center(
                         child: CircularProgressIndicator(
                           value: loadingProgress.expectedTotalBytes != null
@@ -1468,14 +1540,17 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                   },
                   errorBuilder: (context, error, stackTrace) {
                     return ColoredBox(
-                      color: Colors.grey.shade100,
+                      color: placeholderColor,
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
                             Icons.broken_image,
                             size: 64,
-                            color: Colors.grey.shade400,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.5),
                           ),
                           const SizedBox(height: 16),
                           Text(
@@ -1484,7 +1559,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                                 .textTheme
                                 .titleMedium
                                 ?.copyWith(
-                                  color: Colors.grey.shade600,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.7),
                                 ),
                           ),
                           const SizedBox(height: 8),
@@ -1494,7 +1572,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                                 .textTheme
                                 .bodySmall
                                 ?.copyWith(
-                                  color: Colors.grey.shade500,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.6),
                                 ),
                           ),
                         ],

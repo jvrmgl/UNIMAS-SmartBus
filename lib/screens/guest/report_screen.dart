@@ -265,16 +265,16 @@ class _ReportScreenState extends State<ReportScreen>
         TextField(
           controller: _routeController,
           enabled: !_isTripPrefill,
-          decoration: const InputDecoration(
-            labelText: 'Route ID (optional)',
+          decoration: InputDecoration(
+            labelText: _isTripPrefill ? 'Route ID' : 'Route ID (optional)',
           ),
         ),
         const SizedBox(height: 16),
         TextField(
           controller: _busController,
           enabled: !_isTripPrefill,
-          decoration: const InputDecoration(
-            labelText: 'Bus ID (optional)',
+          decoration: InputDecoration(
+            labelText: _isTripPrefill ? 'Bus ID' : 'Bus ID (optional)',
           ),
         ),
         const SizedBox(height: 16),

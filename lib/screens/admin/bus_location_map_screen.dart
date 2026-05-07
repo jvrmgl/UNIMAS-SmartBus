@@ -7,6 +7,7 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../models/bus_model.dart';
 import '../../utils/map_marker_helper.dart';
+import '../../utils/map_style.dart';
 
 /// Shows a full-screen map centred on [bus], with all buses and stops visible.
 class BusLocationMapScreen extends StatefulWidget {
@@ -92,7 +93,10 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
       body: Consumer2<BusProvider, RouteProvider>(
         builder: (context, busProvider, routeProvider, _) {
           final markers = _buildMarkers(busProvider, routeProvider);
+          final mapStyle =
+              mapStyleForBrightness(Theme.of(context).brightness);
           return GoogleMap(
+            style: mapStyle,
             initialCameraPosition: CameraPosition(
               target: LatLng(widget.bus.latitude, widget.bus.longitude),
               zoom: AppConstants.defaultMapZoom + 2,

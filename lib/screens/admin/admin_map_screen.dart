@@ -15,6 +15,7 @@ import '../../models/report_model.dart';
 import '../../services/firestore_service.dart';
 import '../../services/location_service.dart';
 import '../../utils/map_marker_helper.dart';
+import '../../utils/map_style.dart';
 import '../../widgets/common_widgets.dart';
 
 class AdminMapScreen extends StatefulWidget {
@@ -639,7 +640,10 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
           Consumer2<BusProvider, RouteProvider>(
             builder: (context, busProvider, routeProvider, _) {
               final markers = _buildMarkers(busProvider, routeProvider);
+              final mapStyle =
+                  mapStyleForBrightness(Theme.of(context).brightness);
               return GoogleMap(
+                style: mapStyle,
                 initialCameraPosition: const CameraPosition(
                   target: LatLng(1.4651, 110.4277),
                   zoom: AppConstants.defaultMapZoom,

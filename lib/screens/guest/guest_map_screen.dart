@@ -19,6 +19,7 @@ import '../../models/bus_stop_model.dart';
 import '../../constants/app_constants.dart';
 import '../../constants/app_theme.dart';
 import '../../utils/map_marker_helper.dart';
+import '../../utils/map_style.dart';
 import '../../models/bus_model.dart';
 import '../../models/route_model.dart';
 import '../shared/bus_detail_screen.dart';
@@ -1005,7 +1006,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             builder: (context, busProvider, routeProvider, smartNotif, _) {
               final markers =
                   _buildMarkers(busProvider, routeProvider, smartNotif);
+              final mapStyle =
+                  mapStyleForBrightness(Theme.of(context).brightness);
               return GoogleMap(
+                style: mapStyle,
                 onMapCreated: (controller) {
                   if (!_mapController.isCompleted) {
                     _mapController.complete(controller);

@@ -13,6 +13,7 @@ import '../../models/bus_model.dart';
 import '../../models/bus_stop_model.dart';
 import '../../services/location_service.dart';
 import '../../utils/map_marker_helper.dart';
+import '../../utils/map_style.dart';
 
 class DriverMapScreen extends StatefulWidget {
   const DriverMapScreen({super.key});
@@ -174,12 +175,19 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
           Consumer3<BusProvider, RouteProvider, DriverShiftProvider>(
             builder: (context, busProvider, routeProvider, shiftProvider, _) {
               final markers = _buildMarkers(busProvider, routeProvider);
+              final mapStyle =
+                  mapStyleForBrightness(Theme.of(context).brightness);
               return GoogleMap(
+                style: mapStyle,
                 initialCameraPosition: const CameraPosition(
                   target: LatLng(1.4651, 110.4277),
                   zoom: AppConstants.defaultMapZoom,
                 ),
-                onMapCreated: (controller) => _mapController.complete(controller),
+                onMapCreated: (controller) {
+                  if (!_mapController.isCompleted) {
+                    _mapController.complete(controller);
+                  }
+                },
                 markers: markers,
                 // On shift: hide the blue dot — the bus icon from DriverTrackingService
                 // serves as the live position indicator.
