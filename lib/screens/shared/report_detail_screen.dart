@@ -372,13 +372,16 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
                         final url = report.imageUrls![index];
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            url,
-                            width: 90,
-                            height: 90,
-                            fit: BoxFit.cover,
+                        return GestureDetector(
+                          onTap: () => _openImageViewer(url),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              url,
+                              width: 90,
+                              height: 90,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         );
                       },
@@ -413,8 +416,8 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                       const Spacer(),
                       Icon(
                         _isStatusPanelExpanded
-                            ? Icons.keyboard_arrow_down
-                            : Icons.keyboard_arrow_up,
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
                         size: 20,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -806,6 +809,34 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
       ];
       return '${monthNames[dt.month]} ${dt.day}';
     }
+  }
+
+  void _openImageViewer(String url) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: const Text('Photo'),
+        ),
+        body: GestureDetector(
+          onTap: () => Navigator.of(context).maybePop(),
+          child: Container(
+            color: Colors.black,
+            child: Center(
+              child: InteractiveViewer(
+                panEnabled: true,
+                minScale: 1.0,
+                maxScale: 4.0,
+                child: Image.network(url),
+              ),
+            ),
+          ),
+        ),
+      ),
+      fullscreenDialog: true,
+    ));
   }
 
   bool _isSameDay(DateTime d1, DateTime d2) {

@@ -386,6 +386,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                   height: 400,
                   viewportFraction: 1.0,
                   enableInfiniteScroll: false,
+                  scrollPhysics: const BouncingScrollPhysics(),
                   autoPlay: false,
                   autoPlayInterval: const Duration(seconds: 10),
                   autoPlayAnimationDuration: const Duration(milliseconds: 800),
@@ -716,8 +717,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           );
         }
 
-        // Find 3 closest bus stops to user
-        final List<({BusStop stop, double km})> top3Stops = [];
+        // Find all bus stops (sorted by distance to user)
+        final List<({BusStop stop, double km})> nearbyStops = [];
         final pos = locationProvider.currentPosition;
         if (pos != null && routeProvider.busStops.isNotEmpty) {
           final sorted = [...routeProvider.busStops]..sort((a, b) {
@@ -727,11 +728,11 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
                 pos.latitude, pos.longitude, b.latitude, b.longitude);
             return da.compareTo(db);
           });
-          for (final s in sorted.take(3)) {
+          for (final s in sorted) {
             final km = Geolocator.distanceBetween(
                     pos.latitude, pos.longitude, s.latitude, s.longitude) /
                 1000;
-            top3Stops.add((stop: s, km: km));
+            nearbyStops.add((stop: s, km: km));
           }
         }
 
@@ -848,154 +849,169 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
           children: [
 
             // ── Stops Near You ────────────────────────────────────────
-            if (top3Stops.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
+            if (nearbyStops.isNotEmpty) ...[
+              Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                clipBehavior: Clip.hardEdge,
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  leading: Icon(Icons.near_me, color: AppTheme.primaryColor),
+                  title: Text(
+                    'Stops Around You',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: AppTheme.primaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
                   children: [
-                    Icon(Icons.near_me, size: 16, color: AppTheme.primaryColor),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Stops Around You',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: AppTheme.primaryColor,
-                            fontWeight: FontWeight.bold,
+                    ...nearbyStops.asMap().entries.map((e) {
+                      final entry = e.value;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            leading: CircleAvatar(
+                              backgroundColor: AppTheme.primaryColor,
+                              child: const Icon(Icons.bus_alert,
+                                  color: Colors.white, size: 20),
+                            ),
+                            title: Text(entry.stop.stopName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                            subtitle: Text(
+                                '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
+                            trailing: Builder(
+                              builder: (context) {
+                                final busText = _getStopBusNumber(
+                                      stop: entry.stop,
+                                      buses: busProvider.buses,
+                                      routes: routeProvider.routes,
+                                      routeProvider: routeProvider,
+                                    );
+                                final etaText = _getStopEtaMinutes(
+                                      stop: entry.stop,
+                                      buses: busProvider.buses,
+                                      routes: routeProvider.routes,
+                                      routeProvider: routeProvider,
+                                    );
+                                final hasBus = busText != 'No active bus';
+                                final textColor = hasBus ? Colors.green.shade700 : Colors.grey.shade600;
+                                
+                                return ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    minWidth: 84,
+                                    maxWidth: 108,
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        busText,
+                                        textAlign: TextAlign.right,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: textColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        etaText,
+                                        textAlign: TextAlign.right,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall
+                                            ?.copyWith(
+                                              color: textColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                            ),
                           ),
-                    ),
+                          // Card actions row
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            child: Row(
+                              children: [
+                                OutlinedButton.icon(
+                                  icon: Icon(Icons.map_outlined,
+                                      size: 16, color: AppTheme.primaryColor),
+                                  label: Text('View on Map',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppTheme.primaryColor)),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 4),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    side: BorderSide(color: AppTheme.primaryColor.withValues(alpha: 0.5)),
+                                  ),
+                                  onPressed: () {
+                                    context
+                                        .read<DashboardNavProvider>()
+                                        .navigateToMapWithFocus(
+                                          entry.stop.latitude,
+                                          entry.stop.longitude,
+                                        );
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                            'Showing ${entry.stop.stopName} on map'),
+                                        duration: const Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton.icon(
+                                  icon: Icon(Icons.navigation,
+                                      size: 16,
+                                      color: Colors.green.shade600),
+                                  label: Text('Navigate',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.green.shade600)),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 4),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    side: BorderSide(color: Colors.green.shade600.withValues(alpha: 0.5)),
+                                  ),
+                                  onPressed: () =>
+                                      _guideMeThere(entry.stop),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (e.key != nearbyStops.length - 1)
+                            const Divider(height: 1),
+                        ],
+                      );
+                    }),
                   ],
                 ),
               ),
-              ...top3Stops.asMap().entries.map((e) {
-                final entry = e.value;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ListTile(
-                        contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                        leading: CircleAvatar(
-                          backgroundColor: AppTheme.primaryColor,
-                          child: const Icon(Icons.bus_alert,
-                              color: Colors.white, size: 20),
-                        ),
-                        title: Text(entry.stop.stopName,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                            '${entry.stop.stopCode} • ${entry.km.toStringAsFixed(1)} km away'),
-                        trailing: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            minWidth: 84,
-                            maxWidth: 108,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                _getStopBusNumber(
-                                  stop: entry.stop,
-                                  buses: busProvider.buses,
-                                  routes: routeProvider.routes,
-                                  routeProvider: routeProvider,
-                                ),
-                                textAlign: TextAlign.right,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: Colors.green.shade700,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _getStopEtaMinutes(
-                                  stop: entry.stop,
-                                  buses: busProvider.buses,
-                                  routes: routeProvider.routes,
-                                  routeProvider: routeProvider,
-                                ),
-                                textAlign: TextAlign.right,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(
-                                      color: Colors.green.shade700,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Card actions row
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-                        child: Row(
-                          children: [
-                            TextButton.icon(
-                              icon: Icon(Icons.map_outlined,
-                                  size: 16, color: AppTheme.primaryColor),
-                              label: Text('View on Map',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppTheme.primaryColor)),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: () {
-                                context
-                                    .read<DashboardNavProvider>()
-                                    .navigateToMapWithFocus(
-                                      entry.stop.latitude,
-                                      entry.stop.longitude,
-                                    );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        'Showing ${entry.stop.stopName} on map'),
-                                    duration: const Duration(seconds: 2),
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 4),
-                            TextButton.icon(
-                              icon: Icon(Icons.navigation,
-                                  size: 16,
-                                  color: Colors.green.shade600),
-                              label: Text('Navigate',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.green.shade600)),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: () =>
-                                  _guideMeThere(entry.stop),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-              const Divider(),
-              const SizedBox(height: 4),
             ],
             // ── All routes ────────────────────────────────────────────
             Padding(

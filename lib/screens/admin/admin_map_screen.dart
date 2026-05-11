@@ -10,6 +10,7 @@ import '../../providers/bus_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../providers/announcement_provider.dart';
 import '../../models/bus_model.dart';
+import '../../models/bus_stop_model.dart';
 import '../../models/route_model.dart';
 import '../../models/report_model.dart';
 import '../../services/firestore_service.dart';
@@ -525,10 +526,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
         Marker(
           markerId: MarkerId('bus_${bus.busId}'),
           position: LatLng(bus.latitude, bus.longitude),
-          infoWindow: InfoWindow(
-            title: bus.busNumber,
-            snippet: 'Occupancy: ${bus.currentOccupancy}/${bus.capacity}',
-          ),
+          onTap: () => _showBusInfoSheet(bus),
           icon: (bus.isActive ? _busMarkerIcon : _busInactiveMarkerIcon) ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         ),
@@ -540,10 +538,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
         Marker(
           markerId: MarkerId('stop_${stop.stopId}'),
           position: LatLng(stop.latitude, stop.longitude),
-          infoWindow: InfoWindow(
-            title: stop.stopName,
-            snippet: 'Bus Stop',
-          ),
+          onTap: () => _showStopInfoSheet(stop),
           icon: _stopMarkerIcon ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
@@ -551,6 +546,135 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     }
 
     return markers;
+  }
+
+  void _showBusInfoSheet(Bus bus) {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.blue.shade100,
+                    child: Icon(Icons.directions_bus, color: Colors.blue.shade700),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Bus ${bus.busNumber}',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        Text('${bus.isActive ? 'Active' : 'Inactive'} • ${bus.currentOccupancy}/${bus.capacity} seats'),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: bus.isActive ? Colors.green.shade600 : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text('${bus.currentOccupancy}/${bus.capacity}',
+                        style: TextStyle(color: bus.isActive ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: bus.getOccupancyPercentage() / 100,
+                  minHeight: 6,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation<Color>(bus.isNearCapacity() ? Colors.orange : Colors.green),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).pushNamed('/admin/manage_bus', arguments: bus.busId);
+                  },
+                  child: const Text('Manage Bus'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showStopInfoSheet(BusStop stop) {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.green.shade100,
+                    child: Icon(Icons.place, color: Colors.green.shade700),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(stop.stopName,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        Text(stop.stopCode),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (stop.description.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(stop.description, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).pushNamed('/admin/manage_route', arguments: stop.stopId);
+                  },
+                  child: const Text('Manage Stop'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildCompactStat({

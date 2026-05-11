@@ -88,73 +88,85 @@ class MapMarkerHelper {
     return _toBitmapDescriptor(recorder, size.toInt(), size.toInt());
   }
 
-  // ── Stop marker: teardrop pin ───────────────────────────────────────────────
+  // ── Stop marker: Circular Bus Stop Icon ─────────────────────────────────────
 
   static Future<BitmapDescriptor> _drawStopPin({required bool waiting}) async {
-    const double w = 48;
-    const double h = 66;
-    const double cx = w / 2;
-    const double r = 21.0;
+    const double size = 56.0;
+    const double r = size / 2;
     final color = waiting ? const Color(0xFFE65100) : const Color(0xFF2E7D32);
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, w, h));
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
 
-    final colorPaint = Paint()..color = color;
-    final whitePaint = Paint()..color = Colors.white;
-
-    // Drop shadow
+    // Shadow
     canvas.drawCircle(
-      Offset(cx, r + 2),
-      r + 1,
+      const Offset(r, r + 2),
+      r - 2,
       Paint()
-        ..color = Colors.black.withValues(alpha: 0.2)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+        ..color = Colors.black.withValues(alpha: 0.3)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
     );
 
-    // Pin circle top
-    canvas.drawCircle(Offset(cx, r), r, colorPaint);
-
-    // Pin triangle tail
-    final tail = Path()
-      ..moveTo(cx - 9, r + 14)
-      ..lineTo(cx + 9, r + 14)
-      ..lineTo(cx, h - 4)
-      ..close();
-    canvas.drawPath(tail, colorPaint);
-
-    // White border on circle
+    // Main background circle
     canvas.drawCircle(
-      Offset(cx, r),
-      r - 1,
+      const Offset(r, r),
+      r - 4,
+      Paint()..color = color,
+    );
+
+    // Inner white border
+    canvas.drawCircle(
+      const Offset(r, r),
+      r - 5,
       Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
 
-    // Bus-stop sign icon: horizontal plank + pole
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - 9, r - 9, 18, 8),
-        const Radius.circular(2),
-      ),
-      whitePaint,
-    );
-    canvas.drawRect(Rect.fromLTWH(cx - 1.5, r - 1, 3, 15), whitePaint);
+    // Draw standard bus icon as the bus stop symbol.
+    final iconPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    
+    final iconPath = Path()
+      ..moveTo(r - 8, r - 8)
+      ..lineTo(r + 8, r - 8)
+      ..arcToPoint(Offset(r + 10, r - 6), radius: const Radius.circular(2))
+      ..lineTo(r + 10, r + 6)
+      ..lineTo(r + 8, r + 6)
+      ..lineTo(r + 8, r + 10)
+      ..lineTo(r + 5, r + 10)
+      ..lineTo(r + 5, r + 6)
+      ..lineTo(r - 5, r + 6)
+      ..lineTo(r - 5, r + 10)
+      ..lineTo(r - 8, r + 10)
+      ..lineTo(r - 8, r + 6)
+      ..lineTo(r - 10, r + 6)
+      ..arcToPoint(Offset(r - 8, r - 8), radius: const Radius.circular(2), clockwise: false)
+      ..close();
 
-    // If waiting, draw a small pulsing-ring indicator
+    // Windows
+    final windowPaint = Paint()..color = color;
+    canvas.drawPath(iconPath, iconPaint);
+    canvas.drawRRect(RRect.fromLTRBR(r - 7, r - 5, r + 7, r, const Radius.circular(1)), windowPaint);
+
+    // Headlights
+    canvas.drawCircle(Offset(r - 6, r + 3), 1.5, windowPaint);
+    canvas.drawCircle(Offset(r + 6, r + 3), 1.5, windowPaint);
+
+    // If waiting, draw a dashed outer ring
     if (waiting) {
       canvas.drawCircle(
-        Offset(cx, r),
-        r - 3,
+        const Offset(r, r),
+        r - 1,
         Paint()
-        ..color = Colors.white.withValues(alpha: 0.25)
+          ..color = color.withValues(alpha: 0.6)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 3,
+          ..strokeWidth = 2,
       );
     }
 
-    return _toBitmapDescriptor(recorder, w.toInt(), h.toInt());
+    return _toBitmapDescriptor(recorder, size.toInt(), size.toInt());
   }
 
   // ── Helper ──────────────────────────────────────────────────────────────────

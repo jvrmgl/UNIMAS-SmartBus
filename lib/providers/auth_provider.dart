@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/device_service.dart';
@@ -246,6 +247,16 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    if (_firebaseUser != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('device_tokens')
+            .doc(_firebaseUser!.uid)
+            .update({'fcmToken': FieldValue.delete()});
+      } catch (_) {
+        // Ignore if document missing or permission denied
+      }
+    }
     await _authService.signOut();
     _currentUser = null;
     _requiresDeviceTransfer = false;

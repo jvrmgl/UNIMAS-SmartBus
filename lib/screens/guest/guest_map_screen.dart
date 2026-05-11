@@ -59,9 +59,6 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   // FocusNodes so we can detect when search bars gain/lose focus
   final FocusNode _originFocusNode = FocusNode();
   final FocusNode _destinationFocusNode = FocusNode();
-  // Nearby stops shown inline in the search bars (clears once user types ≥3 chars)
-  List<BusStop> _originNearbyStops = [];
-  List<BusStop> _destinationNearbyStops = [];
   // Route suggestions shown when both From and To markers are placed
   List<BusRoute> _suggestedRoutes = [];
 
@@ -79,19 +76,12 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       // Listen for map-focus requests from the student dashboard
       _dashboardNavRef = context.read<DashboardNavProvider>();
       _dashboardNavRef!.addListener(_onDashboardNavChange);
-      // Clear nearby stop suggestions when search bars lose/gain focus.
-      // On GAIN: immediately clear the *other* field's list (prevents split-second flash).
-      // On LOSE: delayed clear so a suggestion tap can register before the list disappears.
+      
       _originFocusNode.addListener(() {
         if (!mounted) return;
         if (_originFocusNode.hasFocus) {
           setState(() {
-            _destinationNearbyStops = [];
             _destinationSuggestions = [];
-          });
-        } else {
-          Future.delayed(const Duration(milliseconds: 200), () {
-            if (mounted) setState(() => _originNearbyStops = []);
           });
         }
       });
@@ -99,12 +89,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
         if (!mounted) return;
         if (_destinationFocusNode.hasFocus) {
           setState(() {
-            _originNearbyStops = [];
             _originSuggestions = [];
-          });
-        } else {
-          Future.delayed(const Duration(milliseconds: 200), () {
-            if (mounted) setState(() => _destinationNearbyStops = []);
           });
         }
       });
@@ -234,6 +219,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   void _showBusStopBottomSheet(BusStop stop) {
     showModalBottomSheet(
       context: context,
+      barrierColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -356,16 +342,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
           _suggestedRoutes = [];
         }
       });
-      final pos = _locationProviderRef?.currentPosition;
-      if (pos != null && mounted) {
-        final stops = context.read<RouteProvider>().busStops;
-        setState(() => _originNearbyStops =
-            _findNearbyStops(pos.latitude, pos.longitude, stops));
-      }
       return;
     }
     // User is typing a real location — reset stop hints, fetch address suggestions
-    setState(() => _originNearbyStops = []);
     _originDebounce = Timer(const Duration(milliseconds: 350), () async {
       final suggestions = await _fetchSuggestions(value);
       if (!mounted) return;
@@ -386,15 +365,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
           _suggestedRoutes = [];
         }
       });
-      final pos = _locationProviderRef?.currentPosition;
-      if (pos != null && mounted) {
-        final stops = context.read<RouteProvider>().busStops;
-        setState(() => _destinationNearbyStops =
-            _findNearbyStops(pos.latitude, pos.longitude, stops));
-      }
       return;
     }
-    setState(() => _destinationNearbyStops = []);
     _destinationDebounce = Timer(const Duration(milliseconds: 350), () async {
       final suggestions = await _fetchSuggestions(value);
       if (!mounted) return;
@@ -540,71 +512,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     return active.take(5).toList();
   }
 
-  // Called from the “Stops Around Me” chip — tapping a stop navigates the map camera.
-  void _showStopsNearMeSheet() {
-    final pos = _locationProviderRef?.currentPosition;
-    if (pos == null) {
-      _showMessage('Location not available. Tap the detect button first.');
-      return;
-    }
-    final allStops = context.read<RouteProvider>().busStops;
-    // Show only the 3 closest stops
-    final nearbyStops = _findNearbyStops(pos.latitude, pos.longitude, allStops)
-        .take(3)
-        .toList();
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetCtx) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.place, color: AppTheme.primaryColor),
-                  const SizedBox(width: 8),
-                  Text('Stops Around Me',
-                      style: Theme.of(context).textTheme.titleLarge),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (nearbyStops.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(child: Text('No bus stops found nearby')),
-                )
-              else
-                ...nearbyStops.map((stop) {
-                  final distance = _calculateDistance(pos.latitude,
-                      pos.longitude, stop.latitude, stop.longitude);
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: AppTheme.primaryColor,
-                      child: const Icon(Icons.bus_alert,
-                          color: Colors.white, size: 20),
-                    ),
-                    title: Text(stop.stopName),
-                    subtitle: Text(
-                        '${stop.stopCode} • ${distance.toStringAsFixed(2)} km away'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () async {
-                      Navigator.pop(sheetCtx);
-                      await _moveCamera(LatLng(stop.latitude, stop.longitude));
-                      if (mounted) _showBusStopBottomSheet(stop);
-                    },
-                  );
-                }),
-            ],
-          ),
-        );
-      },
-    );
-  }
+
 
   Future<void> _detectMyLocation() async {
     setState(() => _isDetectingLocation = true);
@@ -657,88 +565,6 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     }
   }
 
-  // ── Buses Around Me chip handler ───────────────────────────────────────────
-  void _showNearbyBusesSheet() {
-    final pos = _locationProviderRef?.currentPosition;
-    if (pos == null) {
-      _showMessage('Location not available. Tap the detect button first.');
-      return;
-    }
-    final routeProvider = context.read<RouteProvider>();
-    final nearby = _findNearestActiveBuses(
-      pos.latitude,
-      pos.longitude,
-      context.read<BusProvider>().buses,
-    );
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetCtx) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.directions_bus, color: AppTheme.primaryColor),
-                  const SizedBox(width: 8),
-                  Text('Buses Around Me',
-                      style: Theme.of(context).textTheme.titleLarge),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (nearby.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(child: Text('No active buses nearby')),
-                )
-              else
-                ...nearby.map((bus) {
-                  final dist = _calculateDistance(
-                      pos.latitude, pos.longitude, bus.latitude, bus.longitude);
-                  String? routeName;
-                  try {
-                    if (bus.assignedRoute != null) {
-                      routeName = routeProvider.routes
-                          .firstWhere((r) => r.routeId == bus.assignedRoute)
-                          .routeName;
-                    }
-                  } catch (_) {}
-                  final parts = [
-                    if (routeName != null) routeName,
-                    '${bus.currentOccupancy}/${bus.capacity} seats',
-                    '${dist.toStringAsFixed(1)} km away',
-                  ];
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blue.shade700,
-                      child: const Icon(Icons.directions_bus,
-                          color: Colors.white, size: 18),
-                    ),
-                    title: Text('Bus ${bus.busNumber}',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(parts.join(' • ')),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () async {
-                      Navigator.pop(sheetCtx);
-                      await _moveCamera(LatLng(bus.latitude, bus.longitude));
-                      if (!mounted) return;
-                      _showBusInfoSheet(bus);
-                    },
-                  );
-                }),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   // ── Bus info sheet (shown after camera navigates to a bus) ─────────────────
   void _showBusInfoSheet(Bus bus) {
     final routeProvider = context.read<RouteProvider>();
@@ -755,6 +581,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
 
     showModalBottomSheet(
       context: context,
+      barrierColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -1026,8 +853,6 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                 onTap: (_) {
                   FocusScope.of(context).unfocus();
                   setState(() {
-                    _originNearbyStops = [];
-                    _destinationNearbyStops = [];
                     _originSuggestions = [];
                     _destinationSuggestions = [];
                   });
@@ -1069,60 +894,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                       ),
                       border: InputBorder.none,
                     ),
-                    onTap: () {
-                      if (_originController.text.trim().length >= 3) return;
-                      final pos = _locationProviderRef?.currentPosition;
-                      if (pos == null) return;
-                      final stops = context.read<RouteProvider>().busStops;
-                      setState(() => _originNearbyStops =
-                          _findNearbyStops(pos.latitude, pos.longitude, stops));
-                    },
                     onChanged: _onOriginChanged,
                     onEditingComplete: () => _handleSearch(isOrigin: true),
                     onSubmitted: (_) => _handleSearch(isOrigin: true),
                   ),
-                  if (_originNearbyStops.isNotEmpty &&
-                      _originSuggestions.isEmpty)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(left: 8, top: 4, bottom: 2),
-                          child: Text('Nearby stops',
-                              style:
-                                  TextStyle(fontSize: 11, color: Colors.grey)),
-                        ),
-                        ..._originNearbyStops.map((stop) => ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.place,
-                                  size: 18, color: Colors.green),
-                              title: Text(stop.stopName),
-                              subtitle: Text(stop.stopCode),
-                              onTap: () async {
-                                _originController.text = stop.stopName;
-                                _originFocusNode.unfocus();
-                                setState(() {
-                                  _originNearbyStops = [];
-                                  _originSuggestions = [];
-                                  _originMarker = Marker(
-                                    markerId: const MarkerId('origin_search'),
-                                    position:
-                                        LatLng(stop.latitude, stop.longitude),
-                                    infoWindow:
-                                        InfoWindow(title: stop.stopName),
-                                    icon: BitmapDescriptor.defaultMarkerWithHue(
-                                        BitmapDescriptor.hueAzure),
-                                  );
-                                });
-                                await _moveCamera(
-                                    LatLng(stop.latitude, stop.longitude));
-                                if (mounted) {
-                                  _updateRouteSuggestions();
-                                }
-                              },
-                            )),
-                      ],
-                    ),
                   if (_originSuggestions.isNotEmpty)
                     Column(
                       children: _originSuggestions
@@ -1139,7 +914,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                           )
                           .toList(),
                     ),
-                  const Divider(height: 1),
+                  const Divider(height: 16, thickness: 1),
                   TextField(
                     controller: _destinationController,
                     focusNode: _destinationFocusNode,
@@ -1153,63 +928,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                       ),
                       border: InputBorder.none,
                     ),
-                    onTap: () {
-                      if (_destinationController.text.trim().length >= 3) {
-                        return;
-                      }
-                      final pos = _locationProviderRef?.currentPosition;
-                      if (pos == null) return;
-                      final stops = context.read<RouteProvider>().busStops;
-                      setState(() => _destinationNearbyStops =
-                          _findNearbyStops(pos.latitude, pos.longitude, stops));
-                    },
                     onChanged: _onDestinationChanged,
                     onEditingComplete: () => _handleSearch(isOrigin: false),
                     onSubmitted: (_) => _handleSearch(isOrigin: false),
                   ),
-                  if (_destinationNearbyStops.isNotEmpty &&
-                      _destinationSuggestions.isEmpty)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(left: 8, top: 4, bottom: 2),
-                          child: Text('Nearby stops',
-                              style:
-                                  TextStyle(fontSize: 11, color: Colors.grey)),
-                        ),
-                        ..._destinationNearbyStops.map((stop) => ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.place,
-                                  size: 18, color: Colors.green),
-                              title: Text(stop.stopName),
-                              subtitle: Text(stop.stopCode),
-                              onTap: () async {
-                                _destinationController.text = stop.stopName;
-                                _destinationFocusNode.unfocus();
-                                setState(() {
-                                  _destinationNearbyStops = [];
-                                  _destinationSuggestions = [];
-                                  _destinationMarker = Marker(
-                                    markerId:
-                                        const MarkerId('destination_search'),
-                                    position:
-                                        LatLng(stop.latitude, stop.longitude),
-                                    infoWindow:
-                                        InfoWindow(title: stop.stopName),
-                                    icon: BitmapDescriptor.defaultMarkerWithHue(
-                                        BitmapDescriptor.hueViolet),
-                                  );
-                                });
-                                await _moveCamera(
-                                    LatLng(stop.latitude, stop.longitude));
-                                if (mounted) {
-                                  _updateRouteSuggestions();
-                                }
-                              },
-                            )),
-                      ],
-                    ),
                   if (_destinationSuggestions.isNotEmpty)
                     Column(
                       children: _destinationSuggestions
@@ -1259,7 +981,19 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                               // Buses Around Me chip
                               Expanded(
                                 child: GestureDetector(
-                                  onTap: _showNearbyBusesSheet,
+                                  onTap: () {
+                                    final pos = locationProvider.currentPosition;
+                                    if (pos == null) {
+                                      _showMessage('Location not available. Tap the detect button first.');
+                                      return;
+                                    }
+                                    _showNearbyBusesSheet(
+                                      busProvider,
+                                      routeProvider,
+                                      pos.latitude,
+                                      pos.longitude,
+                                    );
+                                  },
                                   child: _statusChip(
                                     icon: Icons.directions_bus,
                                     label: pos != null
@@ -1275,7 +1009,18 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                               // Stops Around Me chip
                               Expanded(
                                 child: GestureDetector(
-                                  onTap: _showStopsNearMeSheet,
+                                  onTap: () {
+                                    final pos = locationProvider.currentPosition;
+                                    if (pos == null) {
+                                      _showMessage('Location not available. Tap the detect button first.');
+                                      return;
+                                    }
+                                    _showStopsNearMeSheet(
+                                      routeProvider,
+                                      pos.latitude,
+                                      pos.longitude,
+                                    );
+                                  },
                                   child: _statusChip(
                                     icon: Icons.place,
                                     label: pos != null
