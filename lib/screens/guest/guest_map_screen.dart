@@ -62,6 +62,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   // Route suggestions shown when both From and To markers are placed
   List<BusRoute> _suggestedRoutes = [];
 
+  // Controls which inline drawer is currently open ('buses', 'stops', or '')
+  String _expandedDrawer = '';
+
   @override
   void initState() {
     super.initState();
@@ -232,13 +235,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(Icons.place, color: AppTheme.primaryColor),
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.green.shade100,
+                    child: Icon(Icons.place, color: Colors.green.shade700),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -297,6 +297,116 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     );
   }
 
+  Widget _buildBusesInlineList(
+      BusProvider busProvider, RouteProvider routeProvider, Position pos) {
+    final activeBuses = _findNearestActiveBuses(pos.latitude, pos.longitude, busProvider.buses);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (activeBuses.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Text('No active buses found nearby.', style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(top: 8),
+      itemCount: activeBuses.length,
+      itemBuilder: (context, index) {
+        final bus = activeBuses[index];
+        String routeName = 'No Route';
+        if (bus.assignedRoute != null) {
+          try {
+            final route = routeProvider.routes.firstWhere((r) => r.routeId == bus.assignedRoute);
+            routeName = route.routeName;
+          } catch (_) {}
+        }
+        final distance = _calculateDistance(pos.latitude, pos.longitude, bus.latitude, bus.longitude);
+
+        return Card(
+          elevation: 0,
+          color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
+          margin: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: isDark ? BorderSide(color: Colors.blue.shade900, width: 1) : BorderSide.none,
+          ),
+          child: ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.blue.withValues(alpha: 0.2) : Colors.blue.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.directions_bus, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700, size: 20),
+            ),
+            title: Text('Bus ${bus.busNumber}', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+            subtitle: Text('$routeName • ${distance.toStringAsFixed(2)} km away', style: TextStyle(color: isDark ? Colors.blue.shade200 : Colors.blue.shade800, fontSize: 12)),
+            trailing: Icon(Icons.chevron_right, color: isDark ? Colors.grey.shade400 : Colors.grey, size: 20),
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              setState(() => _expandedDrawer = '');
+              _moveCamera(LatLng(bus.latitude, bus.longitude));
+              _showBusInfoSheet(bus);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStopsInlineList(RouteProvider routeProvider, Position pos) {
+    final nearbyStops = _findNearbyStops(pos.latitude, pos.longitude, routeProvider.busStops).take(4).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (nearbyStops.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Text('No bus stops found near you.', style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(top: 8),
+      itemCount: nearbyStops.length,
+      itemBuilder: (context, index) {
+        final stop = nearbyStops[index];
+        final distance = _calculateDistance(pos.latitude, pos.longitude, stop.latitude, stop.longitude);
+
+        return Card(
+          elevation: 0,
+          color: isDark ? const Color(0xFF14532D).withValues(alpha: 0.3) : Colors.green.shade50,
+          margin: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: isDark ? BorderSide(color: Colors.green.shade900, width: 1) : BorderSide.none,
+          ),
+          child: ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.green.withValues(alpha: 0.2) : Colors.green.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.place, color: isDark ? Colors.green.shade300 : Colors.green.shade700, size: 20),
+            ),
+            title: Text(stop.stopName, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+            subtitle: Text('${stop.stopCode} • ${distance.toStringAsFixed(2)} km away', style: TextStyle(color: isDark ? Colors.green.shade200 : Colors.green.shade800, fontSize: 12)),
+            trailing: Icon(Icons.chevron_right, color: isDark ? Colors.grey.shade400 : Colors.grey, size: 20),
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              setState(() => _expandedDrawer = '');
+              _moveCamera(LatLng(stop.latitude, stop.longitude));
+              _showBusStopBottomSheet(stop);
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Future<LatLng?> _geocodeAddress(String address) async {
     if (!AppConstants.enableGeocodingApi) {
       return null;
@@ -331,6 +441,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   }
 
   void _onOriginChanged(String value) {
+    setState(() {}); // Update the clear button visibility
     _originDebounce?.cancel();
     if (value.trim().length < 3) {
       // Text too short — show nearby stops instead of address suggestions
@@ -355,6 +466,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   }
 
   void _onDestinationChanged(String value) {
+    setState(() {}); // Update the clear button visibility
     _destinationDebounce?.cancel();
     if (value.trim().length < 3) {
       setState(() {
@@ -557,7 +669,19 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
       await _moveCamera(userLocation);
       if (!mounted) return;
 
-      setState(() => _isDetectingLocation = false);
+      setState(() {
+        _isDetectingLocation = false;
+        _originController.text = 'Current Location';
+        _originMarker = Marker(
+          markerId: const MarkerId('origin_search'),
+          position: userLocation,
+          infoWindow: const InfoWindow(title: 'Current Location'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueAzure,
+          ),
+        );
+      });
+      _updateRouteSuggestions();
     } catch (e) {
       if (!mounted) return;
       _showMessage('Error: ${e.toString()}');
@@ -594,14 +718,10 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade700.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child:
-                        Icon(Icons.directions_bus, color: Colors.blue.shade700),
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.blue.shade100,
+                    child: Icon(Icons.directions_bus, color: Colors.blue.shade700),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -888,10 +1008,15 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     decoration: InputDecoration(
                       hintText: 'Current location',
                       prefixIcon: const Icon(Icons.my_location),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.search),
-                        onPressed: () => _handleSearch(isOrigin: true),
-                      ),
+                      suffixIcon: _originController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _originController.clear();
+                                _onOriginChanged('');
+                              },
+                            ),
                       border: InputBorder.none,
                     ),
                     onChanged: _onOriginChanged,
@@ -922,10 +1047,15 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                     decoration: InputDecoration(
                       hintText: 'Enter destination',
                       prefixIcon: const Icon(Icons.place),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.search),
-                        onPressed: () => _handleSearch(isOrigin: false),
-                      ),
+                      suffixIcon: _destinationController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _destinationController.clear();
+                                _onDestinationChanged('');
+                              },
+                            ),
                       border: InputBorder.none,
                     ),
                     onChanged: _onDestinationChanged,
@@ -987,21 +1117,18 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                                       _showMessage('Location not available. Tap the detect button first.');
                                       return;
                                     }
-                                    _showNearbyBusesSheet(
-                                      busProvider,
-                                      routeProvider,
-                                      pos.latitude,
-                                      pos.longitude,
-                                    );
+                                    setState(() {
+                                      _expandedDrawer = _expandedDrawer == 'buses' ? '' : 'buses';
+                                    });
                                   },
                                   child: _statusChip(
                                     icon: Icons.directions_bus,
                                     label: pos != null
                                         ? '$nearbyBusCount Buses Around Me'
                                         : 'Buses Around Me',
-                                    color: nearbyBusCount > 0
-                                        ? Colors.blue
-                                        : Colors.grey,
+                                    color: _expandedDrawer == 'buses'
+                                        ? Colors.blue.shade700
+                                        : (nearbyBusCount > 0 ? Colors.blue : Colors.grey),
                                   ),
                                 ),
                               ),
@@ -1015,22 +1142,37 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                                       _showMessage('Location not available. Tap the detect button first.');
                                       return;
                                     }
-                                    _showStopsNearMeSheet(
-                                      routeProvider,
-                                      pos.latitude,
-                                      pos.longitude,
-                                    );
+                                    setState(() {
+                                      _expandedDrawer = _expandedDrawer == 'stops' ? '' : 'stops';
+                                    });
                                   },
                                   child: _statusChip(
                                     icon: Icons.place,
                                     label: pos != null
                                         ? '$nearbyStopCount Stops Around Me'
                                         : 'Stops Around Me',
-                                    color: Colors.green,
+                                    color: _expandedDrawer == 'stops'
+                                        ? Colors.green.shade700
+                                        : Colors.green,
                                   ),
                                 ),
                               ),
                             ],
+                          ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: _expandedDrawer.isEmpty
+                                ? const SizedBox.shrink()
+                                : Container(
+                                    margin: const EdgeInsets.only(top: 8),
+                                    constraints: BoxConstraints(
+                                      maxHeight: MediaQuery.of(context).size.height * 0.4, // Limits max height to not overflow
+                                    ),
+                                    child: _expandedDrawer == 'buses'
+                                        ? _buildBusesInlineList(busProvider, routeProvider, pos!)
+                                        : _buildStopsInlineList(routeProvider, pos!),
+                                  ),
                           ),
                         ],
                       );

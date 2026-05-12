@@ -115,6 +115,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       children: [
                         // Row 1: Buses + Routes
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
                               child: _buildOverviewStat(
@@ -145,6 +146,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         ),
                         // Row 2: Passengers + Pending Reports
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
                               child: _buildOverviewStat(

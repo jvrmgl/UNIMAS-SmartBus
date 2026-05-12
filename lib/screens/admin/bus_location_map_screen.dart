@@ -92,7 +92,7 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
       ),
       builder: (ctx) {
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,6 +100,7 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
               Row(
                 children: [
                   CircleAvatar(
+                    radius: 22,
                     backgroundColor: Colors.blue.shade100,
                     child: Icon(Icons.directions_bus, color: Colors.blue.shade700),
                   ),
@@ -110,11 +111,31 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
                       children: [
                         Text('Bus ${bus.busNumber}',
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
                         Text('${bus.isActive ? 'Active' : 'Inactive'} • ${bus.currentOccupancy}/${bus.capacity} seats'),
                       ],
                     ),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: bus.isActive ? Colors.green.shade600 : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text('${bus.currentOccupancy}/${bus.capacity}',
+                        style: TextStyle(color: bus.isActive ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+                  ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: bus.getOccupancyPercentage() / 100,
+                  minHeight: 6,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation<Color>(bus.isNearCapacity() ? Colors.orange : Colors.green),
+                ),
               ),
             ],
           ),
@@ -132,7 +153,7 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
       ),
       builder: (ctx) {
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,6 +161,7 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
               Row(
                 children: [
                   CircleAvatar(
+                    radius: 22,
                     backgroundColor: Colors.green.shade100,
                     child: Icon(Icons.place, color: Colors.green.shade700),
                   ),
@@ -150,6 +172,7 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
                       children: [
                         Text(stop.stopName,
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
                         Text(stop.stopCode),
                       ],
                     ),
@@ -159,7 +182,7 @@ class _BusLocationMapScreenState extends State<BusLocationMapScreen> {
               if (stop.description.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(stop.description, style: Theme.of(context).textTheme.bodyMedium),
-              ]
+              ],
             ],
           ),
         );

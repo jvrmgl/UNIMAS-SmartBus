@@ -91,7 +91,7 @@ class MapMarkerHelper {
   // ── Stop marker: Circular Bus Stop Icon ─────────────────────────────────────
 
   static Future<BitmapDescriptor> _drawStopPin({required bool waiting}) async {
-    const double size = 56.0;
+    const double size = 80.0;
     const double r = size / 2;
     final color = waiting ? const Color(0xFFE65100) : const Color(0xFF2E7D32);
     final recorder = ui.PictureRecorder();
@@ -120,7 +120,7 @@ class MapMarkerHelper {
       Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+        ..strokeWidth = 3,
     );
 
     // Draw standard bus icon as the bus stop symbol.
@@ -129,30 +129,30 @@ class MapMarkerHelper {
       ..style = PaintingStyle.fill;
     
     final iconPath = Path()
-      ..moveTo(r - 8, r - 8)
-      ..lineTo(r + 8, r - 8)
-      ..arcToPoint(Offset(r + 10, r - 6), radius: const Radius.circular(2))
-      ..lineTo(r + 10, r + 6)
-      ..lineTo(r + 8, r + 6)
-      ..lineTo(r + 8, r + 10)
-      ..lineTo(r + 5, r + 10)
-      ..lineTo(r + 5, r + 6)
-      ..lineTo(r - 5, r + 6)
-      ..lineTo(r - 5, r + 10)
-      ..lineTo(r - 8, r + 10)
-      ..lineTo(r - 8, r + 6)
-      ..lineTo(r - 10, r + 6)
-      ..arcToPoint(Offset(r - 8, r - 8), radius: const Radius.circular(2), clockwise: false)
+      ..moveTo(r - 12, r - 12)
+      ..lineTo(r + 12, r - 12)
+      ..arcToPoint(Offset(r + 15, r - 9), radius: const Radius.circular(3))
+      ..lineTo(r + 15, r + 9)
+      ..lineTo(r + 12, r + 9)
+      ..lineTo(r + 12, r + 15)
+      ..lineTo(r + 7, r + 15)
+      ..lineTo(r + 7, r + 9)
+      ..lineTo(r - 7, r + 9)
+      ..lineTo(r - 7, r + 15)
+      ..lineTo(r - 12, r + 15)
+      ..lineTo(r - 12, r + 9)
+      ..lineTo(r - 15, r + 9)
+      ..arcToPoint(Offset(r - 12, r - 12), radius: const Radius.circular(3), clockwise: false)
       ..close();
 
     // Windows
     final windowPaint = Paint()..color = color;
     canvas.drawPath(iconPath, iconPaint);
-    canvas.drawRRect(RRect.fromLTRBR(r - 7, r - 5, r + 7, r, const Radius.circular(1)), windowPaint);
+    canvas.drawRRect(RRect.fromLTRBR(r - 10, r - 7, r + 10, r, const Radius.circular(1.5)), windowPaint);
 
     // Headlights
-    canvas.drawCircle(Offset(r - 6, r + 3), 1.5, windowPaint);
-    canvas.drawCircle(Offset(r + 6, r + 3), 1.5, windowPaint);
+    canvas.drawCircle(Offset(r - 9, r + 4.5), 2.0, windowPaint);
+    canvas.drawCircle(Offset(r + 9, r + 4.5), 2.0, windowPaint);
 
     // If waiting, draw a dashed outer ring
     if (waiting) {

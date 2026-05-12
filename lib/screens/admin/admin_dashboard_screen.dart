@@ -182,8 +182,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                     return Column(
                                       children: [
                                         // Row 1: Buses + Routes
-                                        Row(
-                                          children: [
+                                        Row(                                          crossAxisAlignment: CrossAxisAlignment.start,                                          children: [
                                             Expanded(
                                               child: _buildOverviewStat(
                                                 icon: Icons.directions_bus,
@@ -213,6 +212,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                         ),
                                         // Row 2: Passengers + Pending
                                         Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Expanded(
                                               child: _buildOverviewStat(

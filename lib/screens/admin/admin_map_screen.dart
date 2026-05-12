@@ -845,6 +845,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: _buildCompactStat(

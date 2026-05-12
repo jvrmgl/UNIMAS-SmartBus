@@ -895,6 +895,21 @@ exports.onBusActivated = functions
       .get();
     if (!tokenDoc.exists || !tokenDoc.data().fcmToken) return null;
 
+    const tokenData = tokenDoc.data();
+    const fcmToken = tokenData.fcmToken;
+    const deviceId = tokenData.deviceId;
+
+    if (deviceId) {
+      // Cross-check that the device is still signed in as this driver
+      const deviceDoc = await admin.firestore().collection('device_tokens').doc(deviceId).get();
+      if (deviceDoc.exists && deviceDoc.data().userId !== driverId) {
+        console.warn(`Driver ${driverId}'s device token overtook by ${deviceDoc.data().userId}. Aborting push.`);
+        // Clean up the stale token mapping
+        await tokenDoc.ref.update({ fcmToken: admin.firestore.FieldValue.delete() });
+        return null;
+      }
+    }
+
     const busNumber = after.busNumber || 'your bus';
     const shiftStartedTmpl = await getTemplate(
       'shift_started',
