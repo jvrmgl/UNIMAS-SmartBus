@@ -442,7 +442,31 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
         final activeBuses = busProvider.buses.where((bus) => bus.isActive).toList();
 
         if (busProvider.isLoading) {
-          return const Center(child: CircularProgressIndicator());
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: 4,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    const SkeletonBox(height: 56, width: 56, borderRadius: BorderRadius.all(Radius.circular(12))),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          SkeletonBox(height: 16),
+                          SizedBox(height: 8),
+                          SkeletonBox(height: 12, width: 120),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
         }
 
         if (activeBuses.isEmpty) {

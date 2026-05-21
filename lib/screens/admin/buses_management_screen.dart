@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -9,7 +11,8 @@ import '../../services/firestore_service.dart';
 import 'bus_location_map_screen.dart';
 
 class BusesManagementScreen extends StatefulWidget {
-  const BusesManagementScreen({super.key});
+  final String? initialFocusBusId;
+  const BusesManagementScreen({super.key, this.initialFocusBusId});
 
   @override
   State<BusesManagementScreen> createState() => _BusesManagementScreenState();
@@ -18,6 +21,11 @@ class BusesManagementScreen extends StatefulWidget {
 class _BusesManagementScreenState extends State<BusesManagementScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   late BusProvider _busProvider;
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _busCardKeys = {};
+  String? _highlightBusId;
+  Timer? _clearHighlightTimer;
+  bool _didInitialFocus = false;
 
   @override
   void initState() {
@@ -32,9 +40,38 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
 
   @override
   void dispose() {
-    // Use the saved reference — never call context.read() inside dispose().
     _busProvider.stopListeningToBuses();
+    _clearHighlightTimer?.cancel();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _focusBusIfNeeded(BusProvider busProvider) {
+    final targetId = widget.initialFocusBusId;
+    if (targetId == null || _highlightBusId != null || _didInitialFocus) return;
+    final exists = busProvider.buses.any((bus) => bus.busId == targetId);
+    if (!exists) return;
+
+    _highlightBusId = targetId;
+    _didInitialFocus = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final targetKey = _busCardKeys[targetId];
+      final ctx = targetKey?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+          alignment: 0.12,
+        );
+      }
+    });
+
+    _clearHighlightTimer?.cancel();
+    _clearHighlightTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      setState(() => _highlightBusId = null);
+    });
   }
 
   @override
@@ -59,8 +96,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.directions_bus_filled, 
-                      size: 64, 
+                  Icon(Icons.directions_bus_filled,
+                      size: 64,
                       color: Colors.grey[400]),
                   const SizedBox(height: 16),
                   Text(
@@ -83,16 +120,41 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
             );
           }
 
+          _focusBusIfNeeded(busProvider);
           return ListView.builder(
+            controller: _scrollController,
             padding: const EdgeInsets.all(16),
             itemCount: busProvider.buses.length,
             itemBuilder: (context, index) {
               final bus = busProvider.buses[index];
               final isActive = bus.isActive;
               final statusColor = isActive ? Colors.green : Colors.grey;
+              final isHighlighted = bus.busId == _highlightBusId;
+              final busKey = _busCardKeys.putIfAbsent(
+                bus.busId,
+                () => GlobalKey(),
+              );
 
-              return Card(
+              return AnimatedContainer(
+                key: busKey,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
                 margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isHighlighted
+                    ? Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.08)
+                    : Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isHighlighted
+                      ? Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 1.2,
+                        )
+                      : null,
+                ),
                 child: Column(
                   children: [
                     ListTile(
@@ -152,7 +214,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                               return Text('Route: $routeLabel',
                                   style: const TextStyle(color: Colors.blue));
                             }),
-                          // Driver info only shown for active buses
                           if (isActive)
                             Row(
                               children: [
@@ -224,7 +285,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                         },
                       ),
                     ),
-                    // Action buttons row
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                       child: Row(
@@ -245,10 +305,14 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: bus.driverId == null
                                     ? Colors.blue
-                                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
                                 foregroundColor: bus.driverId == null
                                     ? Colors.white
-                                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 8),
                               ),
@@ -271,10 +335,14 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: bus.assignedRoute == null
                                     ? Colors.green
-                                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
                                 foregroundColor: bus.assignedRoute == null
                                     ? Colors.white
-                                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 8),
                               ),
@@ -403,7 +471,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                     backgroundColor: error == null ? Colors.green : Colors.red,
                   ),
                 );
-                // Stream auto-refreshes — no fetchBuses() needed.
               },
               child: const Text('Save'),
             ),
@@ -479,7 +546,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                     backgroundColor: error == null ? Colors.green : Colors.red,
                   ),
                 );
-                // Stream auto-refreshes — no fetchBuses() needed.
                 if (error == null) context.read<RouteProvider>().fetchRoutes();
               },
               child: const Text('Save'),
@@ -559,12 +625,11 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                   capacity: int.parse(capacityController.text.trim()),
                   currentOccupancy: 0,
                   lastUpdated: DateTime.now(),
-                  isActive: false, // Start inactive until manually activated
+                  isActive: false,
                   latitude: 0.0,
                   longitude: 0.0,
                 );
 
-                // Capture context-dependent objects before async gap
                 final navigator = Navigator.of(context);
                 final scaffoldMessenger = ScaffoldMessenger.of(context);
 
@@ -576,7 +641,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                   scaffoldMessenger.showSnackBar(
                     const SnackBar(content: Text('Bus added successfully')),
                   );
-                  // Stream auto-refreshes — no fetchBuses() needed.
                 } else {
                   scaffoldMessenger.showSnackBar(
                     SnackBar(content: Text('Error: $error')),
@@ -595,7 +659,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
     final scaffoldContext = context;
     final formKey = GlobalKey<FormState>();
     final busNumberController = TextEditingController(text: bus.busNumber);
-    final regNumberController = TextEditingController(text: bus.registrationNumber);
+    final regNumberController =
+        TextEditingController(text: bus.registrationNumber);
     final capacityController = TextEditingController(text: bus.capacity.toString());
 
     showDialog(
@@ -617,7 +682,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: regNumberController,
-                  decoration: const InputDecoration(labelText: 'Registration Number'),
+                  decoration:
+                      const InputDecoration(labelText: 'Registration Number'),
                   validator: (value) =>
                       value?.isEmpty ?? true ? 'Required' : null,
                 ),
@@ -641,7 +707,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
-         ElevatedButton(
+          ElevatedButton(
             onPressed: () async {
               if (formKey.currentState!.validate()) {
                 final updatedBus = bus.copyWith(
@@ -664,7 +730,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                     backgroundColor: error == null ? Colors.green : Colors.red,
                   ),
                 );
-                // Stream auto-refreshes — no fetchBuses() needed.
               }
             },
             child: const Text('Save'),
@@ -677,7 +742,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
   Future<void> _toggleBusStatus(Bus bus) async {
     final wasActive = bus.isActive;
 
-    // Guard: a bus may only be activated when it has both a driver and a route.
     if (!wasActive) {
       final missing = <String>[];
       if (bus.driverId == null) missing.add('an assigned driver');
@@ -705,8 +769,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
       }
     }
 
-    // Pass admin name so the Cloud Function can include it in the driver
-    // push notification when the bus is activated.
     final adminName = context.read<AuthProvider>().currentUser?.fullName;
     final error = await _firestoreService.setBusActiveStatus(
       busId: bus.busId,
@@ -714,10 +776,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
       adminName: adminName,
     );
 
-    // Stream auto-updates the UI with the new status badge immediately.
-    // Snackbar removed to avoid context lifecycle crashes during rapid rebuilds.
     if (error != null) {
-      // Only show error messages — success is already visible in the UI.
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -755,7 +814,6 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                   backgroundColor: error == null ? Colors.green : Colors.red,
                 ),
               );
-              // Stream auto-refreshes — no fetchBuses() needed.
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),

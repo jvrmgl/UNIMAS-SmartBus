@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -123,36 +124,41 @@ class MapMarkerHelper {
         ..strokeWidth = 3,
     );
 
-    // Draw standard bus icon as the bus stop symbol.
-    final iconPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    
-    final iconPath = Path()
-      ..moveTo(r - 12, r - 12)
-      ..lineTo(r + 12, r - 12)
-      ..arcToPoint(Offset(r + 15, r - 9), radius: const Radius.circular(3))
-      ..lineTo(r + 15, r + 9)
-      ..lineTo(r + 12, r + 9)
-      ..lineTo(r + 12, r + 15)
-      ..lineTo(r + 7, r + 15)
-      ..lineTo(r + 7, r + 9)
-      ..lineTo(r - 7, r + 9)
-      ..lineTo(r - 7, r + 15)
-      ..lineTo(r - 12, r + 15)
-      ..lineTo(r - 12, r + 9)
-      ..lineTo(r - 15, r + 9)
-      ..arcToPoint(Offset(r - 12, r - 12), radius: const Radius.circular(3), clockwise: false)
-      ..close();
+    // Stop sign octagon
+    final signRadius = r - 14;
+    final center = Offset(r, r);
+    final signPath = Path();
+    for (int i = 0; i < 8; i++) {
+      final angle = (math.pi / 8) + (math.pi / 4) * i;
+      final x = center.dx + signRadius * math.cos(angle);
+      final y = center.dy + signRadius * math.sin(angle);
+      if (i == 0) {
+        signPath.moveTo(x, y);
+      } else {
+        signPath.lineTo(x, y);
+      }
+    }
+    signPath.close();
+    canvas.drawPath(signPath, Paint()..color = Colors.white);
 
-    // Windows
-    final windowPaint = Paint()..color = color;
-    canvas.drawPath(iconPath, iconPaint);
-    canvas.drawRRect(RRect.fromLTRBR(r - 10, r - 7, r + 10, r, const Radius.circular(1.5)), windowPaint);
-
-    // Headlights
-    canvas.drawCircle(Offset(r - 9, r + 4.5), 2.0, windowPaint);
-    canvas.drawCircle(Offset(r + 9, r + 4.5), 2.0, windowPaint);
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: 'STOP',
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(r - textPainter.width / 2, r - textPainter.height / 2),
+    );
 
     // If waiting, draw a dashed outer ring
     if (waiting) {

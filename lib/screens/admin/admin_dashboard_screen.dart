@@ -32,7 +32,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<AnnouncementProvider>().fetchAnnouncements();
-      context.read<BusProvider>().fetchBuses();
+      context.read<BusProvider>().listenToBuses();
       context.read<RouteProvider>().fetchRoutes();
     });
   }

@@ -27,6 +27,13 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
   BitmapDescriptor? _busMarkerIcon;
   BitmapDescriptor? _busInactiveMarkerIcon;
   BitmapDescriptor? _stopMarkerIcon;
+  final Map<String, LatLng> _animatedBusPositions = {};
+  final Map<String, Timer> _busAnimationTimers = {};
+  // Adaptive animation: duration computed from distance / assumed speed
+  static const int _minBusAnimationMs = 200;
+  static const int _maxBusAnimationMs = 2500;
+  static const double _busSpeedMps = 10.0; // meters per second (tunable)
+  BusProvider? _busProviderRef;
   double? _smoothedSpeedKmH;
   double? _lastBusLat;
   double? _lastBusLng;
@@ -36,6 +43,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _busProviderRef = context.read<BusProvider>();
+      _busProviderRef!.addListener(_onBusProviderUpdate);
       _loadData();
       _loadMarkerIcons();
     });
@@ -58,10 +67,149 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
     final routeProvider = context.read<RouteProvider>();
     final announcementProvider = context.read<AnnouncementProvider>();
 
-    await busProvider.fetchBuses();
-    await routeProvider.fetchRoutes();
-    await routeProvider.fetchBusStops();
-    await announcementProvider.fetchAnnouncements();
+    busProvider.listenToBuses();
+    routeProvider.listenToBusStops();
+    await Future.wait([
+      routeProvider.fetchRoutes(),
+      announcementProvider.fetchAnnouncements(),
+    ]);
+    _syncBusMarkerPositions(busProvider.buses);
+  }
+
+  void _onBusProviderUpdate() {
+    if (!mounted) return;
+    final busProvider = _busProviderRef;
+    if (busProvider == null) return;
+    _syncBusMarkerPositions(busProvider.buses);
+  }
+
+  void _syncBusMarkerPositions(List<Bus> buses) {
+    final activeIds = buses.map((bus) => bus.busId).toSet();
+    final staleIds = _animatedBusPositions.keys
+        .where((id) => !activeIds.contains(id))
+        .toList();
+
+    for (final id in staleIds) {
+      _busAnimationTimers[id]?.cancel();
+      _busAnimationTimers.remove(id);
+      _animatedBusPositions.remove(id);
+    }
+
+    for (final bus in buses) {
+      _animateBusMarker(bus);
+    }
+  }
+  // Keep previous server-reported positions and timestamps to compute observed speed
+  final Map<String, LatLng> _lastServerPositions = {};
+  final Map<String, DateTime> _lastServerTimestamps = {};
+  final Map<String, double> _smoothedSpeeds = {}; // m/s (EMA)
+
+  void _animateBusMarker(Bus bus) {
+    final busId = bus.busId;
+    final target = LatLng(bus.latitude, bus.longitude);
+    final start = _animatedBusPositions[busId];
+    if (start == null) {
+      _animatedBusPositions[busId] = target;
+      if (mounted) {
+        setState(() {});
+      }
+      // Record server position/timestamp
+      _lastServerPositions[busId] = target;
+      _lastServerTimestamps[busId] = bus.lastUpdated;
+      return;
+    }
+
+    if (start.latitude == target.latitude && start.longitude == target.longitude) {
+      return;
+    }
+
+    _busAnimationTimers[busId]?.cancel();
+    const steps = 30;
+    int tick = 0;
+
+    // Compute distance (meters) and adapt duration
+    final distanceMeters = Geolocator.distanceBetween(
+      start.latitude,
+      start.longitude,
+      target.latitude,
+      target.longitude,
+    );
+
+    // Teleport guard: large jumps should snap instead of slow crawl
+    const double teleportThresholdMeters = 1000.0;
+    if (distanceMeters > teleportThresholdMeters) {
+      _busAnimationTimers[busId]?.cancel();
+      _animatedBusPositions[busId] = target;
+      // update server record
+      _lastServerPositions[busId] = target;
+      _lastServerTimestamps[busId] = bus.lastUpdated;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // Try to compute observed speed from server updates
+    int durationMs;
+    final prevPos = _lastServerPositions[busId];
+    final prevTs = _lastServerTimestamps[busId];
+    double? observedSpeed;
+    if (prevPos != null && prevTs != null) {
+      final serverDeltaMeters = Geolocator.distanceBetween(
+        prevPos.latitude,
+        prevPos.longitude,
+        target.latitude,
+        target.longitude,
+      );
+      final deltaSecs = bus.lastUpdated.difference(prevTs).inMilliseconds / 1000.0;
+      if (deltaSecs > 0 && deltaSecs <= 120) {
+        observedSpeed = serverDeltaMeters / deltaSecs; // m/s
+        // sanity bounds
+        if (observedSpeed < 0.5 || observedSpeed > 40.0) {
+          observedSpeed = null;
+        }
+      }
+    }
+
+    double useSpeed = _busSpeedMps;
+    if (observedSpeed != null) {
+      // EMA smoothing
+      final prevSmooth = _smoothedSpeeds[busId] ?? observedSpeed;
+      const alpha = 0.18;
+      final smooth = prevSmooth * (1 - alpha) + observedSpeed * alpha;
+      _smoothedSpeeds[busId] = smooth;
+      useSpeed = smooth;
+    } else if (_smoothedSpeeds.containsKey(busId)) {
+      useSpeed = _smoothedSpeeds[busId]!;
+    }
+
+    durationMs = (distanceMeters / useSpeed * 1000).round();
+    if (durationMs < _minBusAnimationMs) durationMs = _minBusAnimationMs;
+    if (durationMs > _maxBusAnimationMs) durationMs = _maxBusAnimationMs;
+
+    // Update server-record cache
+    _lastServerPositions[busId] = target;
+    _lastServerTimestamps[busId] = bus.lastUpdated;
+
+    _busAnimationTimers[busId] = Timer.periodic(
+      Duration(milliseconds: (durationMs / steps).round().clamp(16, durationMs)),
+      (timer) {
+        tick += 1;
+        final t = (tick / steps).clamp(0, 1).toDouble();
+        final easedT = _easeInOutQuad(t);
+        final nextLat = start.latitude + (target.latitude - start.latitude) * easedT;
+        final nextLng = start.longitude + (target.longitude - start.longitude) * easedT;
+        _animatedBusPositions[busId] = LatLng(nextLat, nextLng);
+        if (mounted) setState(() {});
+        if (tick >= steps) {
+          timer.cancel();
+          _busAnimationTimers.remove(busId);
+          _animatedBusPositions[busId] = target;
+        }
+      },
+    );
+  }
+
+  double _easeInOutQuad(double t) {
+    return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
   }
 
   Future<void> _goToCurrentLocation() async {
@@ -95,14 +243,13 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
     Set<Marker> markers = {};
 
     for (var bus in busProvider.buses) {
+      final position =
+          _animatedBusPositions[bus.busId] ?? LatLng(bus.latitude, bus.longitude);
       markers.add(
         Marker(
           markerId: MarkerId('bus_${bus.busId}'),
-          position: LatLng(bus.latitude, bus.longitude),
-          infoWindow: InfoWindow(
-            title: bus.busNumber,
-            snippet: 'Occupancy: ${bus.currentOccupancy}/${bus.capacity}',
-          ),
+          position: position,
+          onTap: () => _showBusInfoSheet(bus),
           icon: (bus.isActive ? _busMarkerIcon : _busInactiveMarkerIcon) ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         ),
@@ -114,10 +261,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         Marker(
           markerId: MarkerId('stop_${stop.stopId}'),
           position: LatLng(stop.latitude, stop.longitude),
-          infoWindow: InfoWindow(
-            title: stop.stopName,
-            snippet: 'Bus Stop',
-          ),
+          onTap: () => _showStopInfoSheet(stop),
           icon: _stopMarkerIcon ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
@@ -125,6 +269,115 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
     }
 
     return markers;
+  }
+
+  void _showBusInfoSheet(Bus bus) {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.blue.shade100,
+                    child: Icon(Icons.directions_bus, color: Colors.blue.shade700),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Bus ${bus.busNumber}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${bus.isActive ? 'Active' : 'Inactive'} '
+                          '• ${bus.currentOccupancy}/${bus.capacity} seats',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: bus.getOccupancyPercentage() / 100,
+                  minHeight: 6,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                      bus.isNearCapacity() ? Colors.orange : Colors.green),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showStopInfoSheet(BusStop stop) {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.green.shade100,
+                    child: Icon(Icons.place, color: Colors.green.shade700),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(stop.stopName,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        Text(stop.stopCode),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (stop.description.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(stop.description,
+                    style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -397,6 +650,16 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _busProviderRef?.removeListener(_onBusProviderUpdate);
+    for (final timer in _busAnimationTimers.values) {
+      timer.cancel();
+    }
+    _busAnimationTimers.clear();
+    super.dispose();
   }
 
   Widget _buildCompactStat({

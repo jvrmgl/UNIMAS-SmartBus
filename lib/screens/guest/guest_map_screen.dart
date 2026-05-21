@@ -46,6 +46,13 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   BitmapDescriptor? _busMarkerIcon;
   BitmapDescriptor? _stopMarkerIcon;
   BitmapDescriptor? _waitingStopMarkerIcon;
+  final Map<String, LatLng> _animatedBusPositions = {};
+  final Map<String, Timer> _busAnimationTimers = {};
+  // Adaptive animation: duration computed from distance / assumed speed
+  static const int _minBusAnimationMs = 200;
+  static const int _maxBusAnimationMs = 2500;
+  static const double _busSpeedMps = 10.0; // meters per second (tunable)
+  BusProvider? _busProviderRef;
 
   LocationProvider? _locationProviderRef;
   DashboardNavProvider? _dashboardNavRef;
@@ -70,6 +77,8 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     super.initState();
     _loadMarkerIcons();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _busProviderRef = context.read<BusProvider>();
+      _busProviderRef!.addListener(_onBusProviderUpdate);
       _loadBusesAndStops();
       // Auto-detect and pan to student's location on first map load.
       _detectMyLocation();
@@ -149,9 +158,139 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     busProvider.listenToBuses();
     routeProvider.listenToBusStops();
 
-    // Trigger initial data load for static-ish datasets.
-    await routeProvider.fetchRoutes();
-    await announcementProvider.fetchAnnouncements();
+    // Trigger initial data load for static-ish datasets in parallel.
+    await Future.wait([
+      routeProvider.fetchRoutes(),
+      announcementProvider.fetchAnnouncements(),
+    ]);
+    _syncBusMarkerPositions(busProvider.buses);
+  }
+
+  void _onBusProviderUpdate() {
+    if (!mounted) return;
+    final busProvider = _busProviderRef;
+    if (busProvider == null) return;
+    _syncBusMarkerPositions(busProvider.buses);
+  }
+
+  void _syncBusMarkerPositions(List<Bus> buses) {
+    final activeIds = buses.map((bus) => bus.busId).toSet();
+    final staleIds = _animatedBusPositions.keys
+        .where((id) => !activeIds.contains(id))
+        .toList();
+
+    for (final id in staleIds) {
+      _busAnimationTimers[id]?.cancel();
+      _busAnimationTimers.remove(id);
+      _animatedBusPositions.remove(id);
+    }
+
+    for (final bus in buses) {
+      _animateBusMarker(bus);
+    }
+  }
+  // Server caches for observed-speed calculation
+  final Map<String, LatLng> _lastServerPositions = {};
+  final Map<String, DateTime> _lastServerTimestamps = {};
+  final Map<String, double> _smoothedSpeeds = {};
+
+  void _animateBusMarker(Bus bus) {
+    final busId = bus.busId;
+    final target = LatLng(bus.latitude, bus.longitude);
+    final start = _animatedBusPositions[busId];
+    if (start == null) {
+      _animatedBusPositions[busId] = target;
+      if (mounted) {
+        setState(() {});
+      }
+      _lastServerPositions[busId] = target;
+      _lastServerTimestamps[busId] = bus.lastUpdated;
+      return;
+    }
+
+    if (start.latitude == target.latitude && start.longitude == target.longitude) {
+      return;
+    }
+
+    _busAnimationTimers[busId]?.cancel();
+    const steps = 30;
+    int tick = 0;
+
+    // Compute distance (meters) and adapt duration
+    final distanceMeters = Geolocator.distanceBetween(
+      start.latitude,
+      start.longitude,
+      target.latitude,
+      target.longitude,
+    );
+    const double teleportThresholdMeters = 1000.0;
+    if (distanceMeters > teleportThresholdMeters) {
+      _animatedBusPositions[busId] = target;
+      _lastServerPositions[busId] = target;
+      _lastServerTimestamps[busId] = bus.lastUpdated;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    int durationMs;
+    final prevPos = _lastServerPositions[busId];
+    final prevTs = _lastServerTimestamps[busId];
+    double? observedSpeed;
+    if (prevPos != null && prevTs != null) {
+      final serverDeltaMeters = Geolocator.distanceBetween(
+        prevPos.latitude,
+        prevPos.longitude,
+        target.latitude,
+        target.longitude,
+      );
+      final deltaSecs = bus.lastUpdated.difference(prevTs).inMilliseconds / 1000.0;
+      if (deltaSecs > 0 && deltaSecs <= 120) {
+        observedSpeed = serverDeltaMeters / deltaSecs;
+        if (observedSpeed < 0.5 || observedSpeed > 40.0) observedSpeed = null;
+      }
+    }
+
+    double useSpeed = _busSpeedMps;
+    if (observedSpeed != null) {
+      final prevSmooth = _smoothedSpeeds[busId] ?? observedSpeed;
+      const alpha = 0.18;
+      final smooth = prevSmooth * (1 - alpha) + observedSpeed * alpha;
+      _smoothedSpeeds[busId] = smooth;
+      useSpeed = smooth;
+    } else if (_smoothedSpeeds.containsKey(busId)) {
+      useSpeed = _smoothedSpeeds[busId]!;
+    }
+
+    durationMs = (distanceMeters / useSpeed * 1000).round();
+    if (durationMs < _minBusAnimationMs) durationMs = _minBusAnimationMs;
+    if (durationMs > _maxBusAnimationMs) durationMs = _maxBusAnimationMs;
+
+    _lastServerPositions[busId] = target;
+    _lastServerTimestamps[busId] = bus.lastUpdated;
+
+    _busAnimationTimers[busId] = Timer.periodic(
+      Duration(milliseconds: (durationMs / steps).round().clamp(16, durationMs)),
+      (timer) {
+        tick += 1;
+        final t = (tick / steps).clamp(0, 1).toDouble();
+        final easedT = _easeInOutQuad(t);
+        final nextLat = start.latitude + (target.latitude - start.latitude) * easedT;
+        final nextLng = start.longitude + (target.longitude - start.longitude) * easedT;
+        _animatedBusPositions[busId] = LatLng(nextLat, nextLng);
+        if (mounted) {
+          setState(() {});
+        }
+        if (tick >= steps) {
+          timer.cancel();
+          _busAnimationTimers.remove(busId);
+          _animatedBusPositions[busId] = target;
+        }
+      },
+    );
+  }
+
+  double _easeInOutQuad(double t) {
+    return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
   }
 
   Set<Marker> _buildMarkers(
@@ -164,10 +303,12 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
     // Bus markers — active buses only (inactive buses are hidden from students/guests)
     for (var bus in busProvider.buses) {
       if (!bus.isActive) continue;
+      final position =
+          _animatedBusPositions[bus.busId] ?? LatLng(bus.latitude, bus.longitude);
       markers.add(
         Marker(
           markerId: MarkerId('bus_${bus.busId}'),
-          position: LatLng(bus.latitude, bus.longitude),
+          position: position,
           icon: _busMarkerIcon ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           onTap: () => _showBusInfoSheet(bus),
@@ -975,6 +1116,7 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                   setState(() {
                     _originSuggestions = [];
                     _destinationSuggestions = [];
+                    _expandedDrawer = '';
                   });
                 },
               );
@@ -1297,6 +1439,11 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
   void dispose() {
     _locationProviderRef?.removeListener(_onLocationChanged);
     _dashboardNavRef?.removeListener(_onDashboardNavChange);
+    _busProviderRef?.removeListener(_onBusProviderUpdate);
+    for (final timer in _busAnimationTimers.values) {
+      timer.cancel();
+    }
+    _busAnimationTimers.clear();
     _originController.dispose();
     _destinationController.dispose();
     _originFocusNode.dispose();

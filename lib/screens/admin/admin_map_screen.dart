@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_constants.dart';
 import '../../constants/app_theme.dart';
@@ -18,6 +19,8 @@ import '../../services/location_service.dart';
 import '../../utils/map_marker_helper.dart';
 import '../../utils/map_style.dart';
 import '../../widgets/common_widgets.dart';
+import 'buses_management_screen.dart';
+import 'routes_management_screen.dart';
 
 class AdminMapScreen extends StatefulWidget {
   const AdminMapScreen({super.key});
@@ -35,12 +38,21 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   BitmapDescriptor? _busMarkerIcon;
   BitmapDescriptor? _busInactiveMarkerIcon;
   BitmapDescriptor? _stopMarkerIcon;
+  final Map<String, LatLng> _animatedBusPositions = {};
+  final Map<String, Timer> _busAnimationTimers = {};
+  // Adaptive animation: duration computed from distance / assumed speed
+  static const int _minBusAnimationMs = 200;
+  static const int _maxBusAnimationMs = 2500;
+  static const double _busSpeedMps = 10.0; // meters per second (tunable)
+  BusProvider? _busProviderRef;
   late RouteProvider _routeProvider;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _busProviderRef = context.read<BusProvider>();
+      _busProviderRef!.addListener(_onBusProviderUpdate);
       _routeProvider = context.read<RouteProvider>();
       _routeProvider.addListener(_onRouteProviderUpdate);
       _loadData();
@@ -63,6 +75,11 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   @override
   void dispose() {
     _routeProvider.removeListener(_onRouteProviderUpdate);
+    _busProviderRef?.removeListener(_onBusProviderUpdate);
+    for (final timer in _busAnimationTimers.values) {
+      timer.cancel();
+    }
+    _busAnimationTimers.clear();
     context.read<BusProvider>().stopListeningToBuses();
     context.read<RouteProvider>().stopListeningToBusStops();
     super.dispose();
@@ -83,8 +100,134 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
 
     busProvider.listenToBuses();
     routeProvider.listenToBusStops();
-    await routeProvider.fetchRoutes();
-    await announcementProvider.fetchAnnouncements();
+    await Future.wait([
+      routeProvider.fetchRoutes(),
+      announcementProvider.fetchAnnouncements(),
+    ]);
+    _syncBusMarkerPositions(busProvider.buses);
+  }
+
+  void _onBusProviderUpdate() {
+    if (!mounted) return;
+    final busProvider = _busProviderRef;
+    if (busProvider == null) return;
+    _syncBusMarkerPositions(busProvider.buses);
+  }
+
+  void _syncBusMarkerPositions(List<Bus> buses) {
+    final activeIds = buses.map((bus) => bus.busId).toSet();
+    final staleIds = _animatedBusPositions.keys
+        .where((id) => !activeIds.contains(id))
+        .toList();
+
+    for (final id in staleIds) {
+      _busAnimationTimers[id]?.cancel();
+      _busAnimationTimers.remove(id);
+      _animatedBusPositions.remove(id);
+    }
+
+    for (final bus in buses) {
+      _animateBusMarker(bus);
+    }
+  }
+  // Server caches for observed-speed calculation
+  final Map<String, LatLng> _lastServerPositions = {};
+  final Map<String, DateTime> _lastServerTimestamps = {};
+  final Map<String, double> _smoothedSpeeds = {};
+
+  void _animateBusMarker(Bus bus) {
+    final busId = bus.busId;
+    final target = LatLng(bus.latitude, bus.longitude);
+    final start = _animatedBusPositions[busId];
+    if (start == null) {
+      _animatedBusPositions[busId] = target;
+      if (mounted) setState(() {});
+      _lastServerPositions[busId] = target;
+      _lastServerTimestamps[busId] = bus.lastUpdated;
+      return;
+    }
+
+    if (start.latitude == target.latitude && start.longitude == target.longitude) {
+      return;
+    }
+
+    _busAnimationTimers[busId]?.cancel();
+    const steps = 30;
+    int tick = 0;
+
+    // Compute distance and guard teleports
+    final distanceMeters = Geolocator.distanceBetween(
+      start.latitude,
+      start.longitude,
+      target.latitude,
+      target.longitude,
+    );
+    const double teleportThresholdMeters = 1000.0;
+    if (distanceMeters > teleportThresholdMeters) {
+      _animatedBusPositions[busId] = target;
+      _lastServerPositions[busId] = target;
+      _lastServerTimestamps[busId] = bus.lastUpdated;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    int durationMs;
+    final prevPos = _lastServerPositions[busId];
+    final prevTs = _lastServerTimestamps[busId];
+    double? observedSpeed;
+    if (prevPos != null && prevTs != null) {
+      final serverDeltaMeters = Geolocator.distanceBetween(
+        prevPos.latitude,
+        prevPos.longitude,
+        target.latitude,
+        target.longitude,
+      );
+      final deltaSecs = bus.lastUpdated.difference(prevTs).inMilliseconds / 1000.0;
+      if (deltaSecs > 0 && deltaSecs <= 120) {
+        observedSpeed = serverDeltaMeters / deltaSecs;
+        if (observedSpeed < 0.5 || observedSpeed > 40.0) observedSpeed = null;
+      }
+    }
+
+    double useSpeed = _busSpeedMps;
+    if (observedSpeed != null) {
+      final prevSmooth = _smoothedSpeeds[busId] ?? observedSpeed;
+      const alpha = 0.18;
+      final smooth = prevSmooth * (1 - alpha) + observedSpeed * alpha;
+      _smoothedSpeeds[busId] = smooth;
+      useSpeed = smooth;
+    } else if (_smoothedSpeeds.containsKey(busId)) {
+      useSpeed = _smoothedSpeeds[busId]!;
+    }
+
+    durationMs = (distanceMeters / useSpeed * 1000).round();
+    if (durationMs < _minBusAnimationMs) durationMs = _minBusAnimationMs;
+    if (durationMs > _maxBusAnimationMs) durationMs = _maxBusAnimationMs;
+
+    _lastServerPositions[busId] = target;
+    _lastServerTimestamps[busId] = bus.lastUpdated;
+
+    _busAnimationTimers[busId] = Timer.periodic(
+      Duration(milliseconds: (durationMs / steps).round().clamp(16, durationMs)),
+      (timer) {
+        tick += 1;
+        final t = (tick / steps).clamp(0, 1).toDouble();
+        final easedT = _easeInOutQuad(t);
+        final nextLat = start.latitude + (target.latitude - start.latitude) * easedT;
+        final nextLng = start.longitude + (target.longitude - start.longitude) * easedT;
+        _animatedBusPositions[busId] = LatLng(nextLat, nextLng);
+        if (mounted) setState(() {});
+        if (tick >= steps) {
+          timer.cancel();
+          _busAnimationTimers.remove(busId);
+          _animatedBusPositions[busId] = target;
+        }
+      },
+    );
+  }
+
+  double _easeInOutQuad(double t) {
+    return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
   }
 
   // ── Animate camera to a specific bus ──────────────────────────────────────
@@ -522,10 +665,12 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     Set<Marker> markers = {};
 
     for (var bus in busProvider.buses) {
+      final position =
+          _animatedBusPositions[bus.busId] ?? LatLng(bus.latitude, bus.longitude);
       markers.add(
         Marker(
           markerId: MarkerId('bus_${bus.busId}'),
-          position: LatLng(bus.latitude, bus.longitude),
+          position: position,
           onTap: () => _showBusInfoSheet(bus),
           icon: (bus.isActive ? _busMarkerIcon : _busInactiveMarkerIcon) ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
@@ -608,7 +753,13 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    Navigator.of(context).pushNamed('/admin/manage_bus', arguments: bus.busId);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BusesManagementScreen(
+                          initialFocusBusId: bus.busId,
+                        ),
+                      ),
+                    );
                   },
                   child: const Text('Manage Bus'),
                 ),
@@ -665,7 +816,13 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    Navigator.of(context).pushNamed('/admin/manage_route', arguments: stop.stopId);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const RoutesManagementScreen(
+                          openManageStopsOnLoad: true,
+                        ),
+                      ),
+                    );
                   },
                   child: const Text('Manage Stop'),
                 ),

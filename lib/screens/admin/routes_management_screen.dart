@@ -9,7 +9,9 @@ import '../../services/firestore_service.dart';
 import '../../utils/map_style.dart';
 
 class RoutesManagementScreen extends StatefulWidget {
-  const RoutesManagementScreen({super.key});
+  const RoutesManagementScreen({super.key, this.openManageStopsOnLoad = false});
+
+  final bool openManageStopsOnLoad;
 
   @override
   State<RoutesManagementScreen> createState() => _RoutesManagementScreenState();
@@ -26,6 +28,12 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
       if (!mounted) return;
       context.read<RouteProvider>().fetchRoutes();
       context.read<RouteProvider>().fetchBusStops();
+      if (widget.openManageStopsOnLoad) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _showManageStopsScreen();
+        });
+      }
     });
   }
 

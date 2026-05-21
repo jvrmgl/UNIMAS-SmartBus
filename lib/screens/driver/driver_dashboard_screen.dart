@@ -181,7 +181,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                         ),
                       
                       // Bus Assignment Card
-                      if (!shiftProvider.hasAssignedBus)
+                      if (shiftProvider.isResolvingAssignment &&
+                          !shiftProvider.hasAssignedBus)
+                        _buildAssignmentLoadingCard()
+                      else if (!shiftProvider.hasAssignedBus)
                         _buildBusSelectionCard()
                       else
                         _buildAssignedBusCard(shiftProvider),
@@ -210,6 +213,30 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAssignmentLoadingCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Loading your assigned bus...',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

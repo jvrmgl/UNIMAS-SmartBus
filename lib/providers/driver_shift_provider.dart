@@ -23,6 +23,7 @@ class DriverShiftProvider extends ChangeNotifier {
   bool _isOnShift = false;
   bool _isStartingShift = false;
   bool _isAutoStartingShift = false;
+  bool _isResolvingAssignment = false;
   String? _error;
   String? _driverUid;
   String? _driverEmail;
@@ -32,6 +33,7 @@ class DriverShiftProvider extends ChangeNotifier {
   Bus? get assignedBus => _assignedBus;
   bool get isOnShift => _isOnShift;
   bool get isTracking => _trackingService.isTracking;
+  bool get isResolvingAssignment => _isResolvingAssignment;
   String? get error => _error;
   bool get hasAssignedBus => _assignedBus != null;
 
@@ -197,12 +199,14 @@ class DriverShiftProvider extends ChangeNotifier {
   Future<void> _checkAssignedBus() async {
     if (_driverUid == null) return;
 
+    _isResolvingAssignment = true;
+    notifyListeners();
     try {
       final buses = await _firestoreService.getBuses();
       Bus? assigned =
           buses.where((bus) => bus.driverId == _driverUid).firstOrNull;
       assigned ??= await _healLegacyAssignmentByEmail(buses);
-      
+
       if (assigned != null) {
         _assignedBus = assigned;
         _subscribeToBus(assigned.busId); // live updates
@@ -223,6 +227,9 @@ class DriverShiftProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _error = 'Failed to check assigned bus: $e';
+      notifyListeners();
+    } finally {
+      _isResolvingAssignment = false;
       notifyListeners();
     }
   }

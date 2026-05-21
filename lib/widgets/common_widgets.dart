@@ -63,6 +63,56 @@ class _FadeSlideInState extends State<FadeSlideIn>
 
 // ── Shimmer Placeholder ───────────────────────────────────────────────────────
 /// A simple animated shimmer placeholder for loading states.
+class SkeletonBox extends StatefulWidget {
+  final double height;
+  final double? width;
+  final BorderRadius? borderRadius;
+  const SkeletonBox({super.key, required this.height, this.width, this.borderRadius});
+
+  @override
+  State<SkeletonBox> createState() => _SkeletonBoxState();
+}
+
+class _SkeletonBoxState extends State<SkeletonBox>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6);
+    final highlight = Theme.of(context).colorScheme.surface.withValues(alpha: 0.9);
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        final t = (_ctrl.value * 2) - 0.5;
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
+            gradient: LinearGradient(
+              begin: Alignment(-1 - t, 0),
+              end: Alignment(1 - t, 0),
+              colors: [base, highlight, base],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 // ── Modern Notifications Bottom Sheet ────────────────────────────────────────
 /// Shows a modern, dynamically-sized notifications panel as a bottom sheet.
 /// [role] is one of 'admin', 'driver', 'student'.
