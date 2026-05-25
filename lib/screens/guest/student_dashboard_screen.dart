@@ -18,6 +18,7 @@ import '../../models/schedule_image_model.dart';
 import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/live_trip_pill.dart';
 import 'report_screen.dart';
 import 'student_trips_screen.dart';
 import '../shared/bus_detail_screen.dart';
@@ -214,6 +215,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen>
       ),
       body: Column(
         children: [
+          const LiveTripPill(inAppBarArea: true),
           // User Welcome Card
           Consumer<AuthProvider>(
             builder: (context, authProvider, _) {

@@ -10,6 +10,7 @@ import '../../providers/theme_provider.dart';
 import '../../constants/app_theme.dart';
 import '../shared/edit_profile_screen.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/live_trip_pill.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -171,166 +172,192 @@ class _SettingsScreenState extends State<SettingsScreen> {
               authProvider.firebaseUser != null && authProvider.currentUser == null;
 
           if (isResolvingProfile) {
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _buildNotificationSettings(isDriver: false),
-                const SizedBox(height: 24),
-                _buildSectionTitle('Appearance'),
-                _buildThemeSetting(themeProvider),
-                const SizedBox(height: 24),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: const [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text('Finalizing sign-in...'),
-                        ),
-                      ],
+                return Column(
+                  children: [
+                    const LiveTripPill(inAppBarArea: true),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          _buildNotificationSettings(isDriver: false),
+                          const SizedBox(height: 24),
+                          _buildSectionTitle('Appearance'),
+                          _buildThemeSetting(themeProvider),
+                          const SizedBox(height: 24),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: const [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text('Finalizing sign-in...'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
-            );
+                  ],
+                );
           }
 
           if (authProvider.isAuthenticated && authProvider.currentUser != null) {
             // User is logged in - show account info
-            return ListView(
-              padding: const EdgeInsets.all(16),
+            return Column(
               children: [
-                _buildNotificationSettings(
-                  isDriver: authProvider.currentUser?.role == UserRole.driver,
-                ),
-                const SizedBox(height: 24),
-                _buildSectionTitle('Appearance'),
-                _buildThemeSetting(themeProvider),
-                const SizedBox(height: 24),
-                _buildSectionTitle('Account'),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                const LiveTripPill(inAppBarArea: true),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
                     children: [
-                      Text(
-                        'Details',
-                        style: Theme.of(context).textTheme.titleLarge,
+                      _buildNotificationSettings(
+                        isDriver: authProvider.currentUser?.role == UserRole.driver,
+                      ),
+                      const SizedBox(height: 24),
+                      _buildSectionTitle('Appearance'),
+                      _buildThemeSetting(themeProvider),
+                      const SizedBox(height: 24),
+                      _buildSectionTitle('Account'),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Details',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildInfoItem(
+                              'Name',
+                              authProvider.currentUser?.fullName ?? 'N/A',
+                            ),
+                            const SizedBox(height: 12),
+                            _buildInfoItem(
+                              'Email',
+                              authProvider.currentUser?.email ?? 'N/A',
+                            ),
+                            const SizedBox(height: 12),
+                            _buildInfoItem(
+                              'Role',
+                              authProvider.currentUser?.role
+                                      .toString()
+                                      .split('.')
+                                      .last
+                                      .toUpperCase() ??
+                                  'N/A',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const EditProfileScreen(),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.edit, color: Colors.white, size: 22),
+                              SizedBox(width: 8),
+                              Text('Edit Profile', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      _buildInfoItem(
-                        'Name',
-                        authProvider.currentUser?.fullName ?? 'N/A',
-                      ),
-                      const SizedBox(height: 12),
-                      _buildInfoItem(
-                        'Email',
-                        authProvider.currentUser?.email ?? 'N/A',
-                      ),
-                      const SizedBox(height: 12),
-                      _buildInfoItem(
-                        'Role',
-                        authProvider.currentUser?.role.toString().split('.').last.toUpperCase() ?? 'N/A',
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _handleLogout,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text(
+                            'Logout',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const EditProfileScreen(),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.edit, color: Colors.white, size: 22),
-                        SizedBox(width: 8),
-                        Text('Edit Profile', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _handleLogout,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: const Text(
-                      'Logout',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                   ),
                 ),
               ],
             );
           }
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
+          return Column(
             children: [
-              _buildNotificationSettings(isDriver: false),
-              const SizedBox(height: 24),
-              _buildSectionTitle('Appearance'),
-              _buildThemeSetting(themeProvider),
-              const SizedBox(height: 24),
-              Card(
-                child: Padding(
+              const LiveTripPill(inAppBarArea: true),
+              Expanded(
+                child: ListView(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'You are not signed in.',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Please sign in to access account features.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.of(context)
-                                .pushNamedAndRemoveUntil('/login', (route) => false);
-                          },
-                          child: const Text('Go to Login'),
+                  children: [
+                    _buildNotificationSettings(isDriver: false),
+                    const SizedBox(height: 24),
+                    _buildSectionTitle('Appearance'),
+                    _buildThemeSetting(themeProvider),
+                    const SizedBox(height: 24),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'You are not signed in.',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Please sign in to access account features.',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.of(context)
+                                      .pushNamedAndRemoveUntil('/login', (route) => false);
+                                },
+                                child: const Text('Go to Login'),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],

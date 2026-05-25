@@ -24,6 +24,7 @@ import '../../models/bus_model.dart';
 import '../../models/route_model.dart';
 import '../shared/bus_detail_screen.dart';
 import '../shared/route_detail_screen.dart';
+import '../../widgets/live_trip_pill.dart';
 
 class GuestMapScreen extends StatefulWidget {
   const GuestMapScreen({super.key});
@@ -1087,41 +1088,45 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
           ),
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          // Map
-          Consumer3<BusProvider, RouteProvider, SmartNotificationService>(
-            builder: (context, busProvider, routeProvider, smartNotif, _) {
-              final markers =
-                  _buildMarkers(busProvider, routeProvider, smartNotif);
-              final mapStyle =
-                  mapStyleForBrightness(Theme.of(context).brightness);
-              return GoogleMap(
-                style: mapStyle,
-                onMapCreated: (controller) {
-                  if (!_mapController.isCompleted) {
-                    _mapController.complete(controller);
-                  }
-                },
-                initialCameraPosition: const CameraPosition(
-                  target: LatLng(1.4651, 110.4277), // UNIMAS, Kota Samarahan
-                  zoom: AppConstants.defaultMapZoom,
+          const LiveTripPill(inAppBarArea: true),
+          Expanded(
+            child: Stack(
+              children: [
+                // Map
+                Consumer3<BusProvider, RouteProvider, SmartNotificationService>(
+                  builder: (context, busProvider, routeProvider, smartNotif, _) {
+                    final markers =
+                        _buildMarkers(busProvider, routeProvider, smartNotif);
+                    final mapStyle =
+                        mapStyleForBrightness(Theme.of(context).brightness);
+                    return GoogleMap(
+                      style: mapStyle,
+                      onMapCreated: (controller) {
+                        if (!_mapController.isCompleted) {
+                          _mapController.complete(controller);
+                        }
+                      },
+                      initialCameraPosition: const CameraPosition(
+                        target: LatLng(1.4651, 110.4277),
+                        zoom: AppConstants.defaultMapZoom,
+                      ),
+                      markers: markers,
+                      myLocationEnabled: _hasLocationPermission,
+                      myLocationButtonEnabled: _hasLocationPermission,
+                      // Tapping the map background dismisses keyboard and suggestions.
+                      onTap: (_) {
+                        FocusScope.of(context).unfocus();
+                        setState(() {
+                          _originSuggestions = [];
+                          _destinationSuggestions = [];
+                          _expandedDrawer = '';
+                        });
+                      },
+                    );
+                  },
                 ),
-                markers: markers,
-                myLocationEnabled: _hasLocationPermission,
-                myLocationButtonEnabled: _hasLocationPermission,
-                // Tapping the map background dismisses keyboard and suggestions.
-                onTap: (_) {
-                  FocusScope.of(context).unfocus();
-                  setState(() {
-                    _originSuggestions = [];
-                    _destinationSuggestions = [];
-                    _expandedDrawer = '';
-                  });
-                },
-              );
-            },
-          ),
 
           // Search fields at the top
           Positioned(
@@ -1428,6 +1433,9 @@ class _GuestMapScreenState extends State<GuestMapScreen> {
                         ),
                 ),
               ),
+            ),
+          ),
+              ],
             ),
           ),
         ],

@@ -1579,6 +1579,30 @@ class FirestoreService {
     }
   }
 
+  // Stream device's active trip
+  Stream<StudentTrip?> streamActiveTrip({
+    required String deviceId,
+    String? studentUid,
+  }) {
+    final hasUid = studentUid != null && studentUid.isNotEmpty;
+    final query = hasUid
+        ? _firestore
+            .collection('student_trips')
+            .where('studentUid', isEqualTo: studentUid)
+            .where('status', isEqualTo: 'active')
+            .limit(1)
+        : _firestore
+            .collection('student_trips')
+            .where('deviceId', isEqualTo: deviceId)
+            .where('status', isEqualTo: 'active')
+            .limit(1);
+
+    return query.snapshots().map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      return StudentTrip.fromMap(snapshot.docs.first.data());
+    });
+  }
+
   // Stream device's trips (active first, then past trips)
   Stream<List<StudentTrip>> streamStudentTrips(
     String deviceId, {
