@@ -15,10 +15,11 @@ This manual provides step-by-step instructions for students, drivers, and admins
 ### Step 3: Sign Up (First-Time Users)
 1. Tap Sign Up on the sign-in screen.
 2. Enter your full name, email, and phone number if required.
-3. Choose your role (Student, Driver, or Admin).
-4. Create a password and confirm it.
-5. Tap Create Account.
-6. Verify your account if the app prompts for verification.
+3. Create a password and confirm it.
+4. Tap Create Account.
+5. Verify your account if the app prompts for verification.
+
+Note: New users who sign up through the app are created as students. Driver and admin accounts are assigned separately by an admin.
 
 ### Step 4: Sign In
 1. Enter your assigned email and password.
@@ -46,11 +47,13 @@ This manual provides step-by-step instructions for students, drivers, and admins
 
 ### 2.3 Submit a Report
 1. Open the Reports section.
-2. Tap Create Report.
-3. Choose a category (cleanliness, safety, delay, etc.).
-4. Enter a short description.
-5. Attach a photo if needed.
-6. Tap Submit.
+2. Tap the New Report tab.
+3. Choose a category.
+4. Enter a description of the issue.
+5. Attach photos if needed.
+6. Tap Submit Report.
+
+Note: Only student accounts can submit reports.
 
 ### 2.4 Read Announcements
 1. Open the Notifications sheet.
@@ -62,7 +65,7 @@ This manual provides step-by-step instructions for students, drivers, and admins
 ### 3.1 Start a Shift
 1. Open the Driver Dashboard.
 2. Confirm your assigned bus and route.
-3. Tap Start Trip when you begin the route.
+3. Slide to Start Shift when you are ready to begin.
 
 ### 3.2 Share Live Location
 1. Keep location services enabled during the trip.
@@ -75,8 +78,8 @@ This manual provides step-by-step instructions for students, drivers, and admins
 3. Confirm the displayed occupancy matches the bus.
 
 ### 3.4 End the Trip
-1. Tap End Trip at the end of the route.
-2. Confirm the trip is marked as completed.
+1. Slide to End Shift at the end of the route.
+2. Confirm the shift ends and the bus goes offline.
 
 ## 4. Admin Guide (Step by Step)
 
@@ -97,7 +100,7 @@ This manual provides step-by-step instructions for students, drivers, and admins
 1. Open Manage Routes.
 2. Create or edit routes and route codes.
 3. Add or remove bus stops from routes.
-4. Update schedules if required.
+4. Manage schedule images if required.
 
 ### 4.4 Publish Announcements
 1. Open Announcements.
@@ -132,7 +135,3 @@ This manual provides step-by-step instructions for students, drivers, and admins
 
 - Location is used only for route tracking and ETA accuracy.
 - Report data may be reviewed by admins to improve service.
-
-## 7. Support
-
-Contact your supervisor or the project team for help.
