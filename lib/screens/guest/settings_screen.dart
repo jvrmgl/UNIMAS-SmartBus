@@ -63,7 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     nav.pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
-  Widget _buildNotificationSettings({required bool isDriver}) {
+  Widget _buildNotificationSettings({required bool isDriver, required bool showStudentOptions}) {
     return Consumer<NotificationPrefsProvider>(
       builder: (context, prefs, _) => Card(
         clipBehavior: Clip.hardEdge,
@@ -73,34 +73,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: TextStyle(fontWeight: FontWeight.w600)),
           subtitle: const Text('Push alerts & auto-detect preferences'),
           children: [
-            const Divider(height: 1),
-            SwitchListTile(
-              title: const Text('Bus approaching'),
-              subtitle: const Text(
-                  'Alert when a bus nears your stop while you are waiting'),
-              secondary: const Icon(Icons.directions_bus),
-              value: prefs.busApproaching,
-              onChanged: prefs.setBusApproaching,
-            ),
-            const Divider(height: 1),
-            SwitchListTile(
-              title: const Text('Tap-out reminder'),
-              subtitle:
-                  const Text('Remind me to tap out after 30 minutes on a bus'),
-              secondary: const Icon(Icons.logout),
-              value: prefs.tapOutReminder,
-              onChanged: prefs.setTapOutReminder,
-            ),
-            const Divider(height: 1),
-            SwitchListTile(
-              title: const Text('Auto-detect waiting'),
-              subtitle: const Text(
-                  'Automatically mark me as waiting if I stay near a stop for '
-                  '${SmartNotificationService.waitConfirmMinutes}+ minutes'),
-              secondary: const Icon(Icons.access_time),
-              value: prefs.autoDetectWaiting,
-              onChanged: prefs.setAutoDetectWaiting,
-            ),
+            if (showStudentOptions) ...[
+              const Divider(height: 1),
+              SwitchListTile(
+                title: const Text('Bus approaching'),
+                subtitle: const Text(
+                    'Alert when a bus nears your stop while you are waiting'),
+                secondary: const Icon(Icons.directions_bus),
+                value: prefs.busApproaching,
+                onChanged: prefs.setBusApproaching,
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                title: const Text('Tap-out reminder'),
+                subtitle:
+                    const Text('Remind me to tap out after 30 minutes on a bus'),
+                secondary: const Icon(Icons.logout),
+                value: prefs.tapOutReminder,
+                onChanged: prefs.setTapOutReminder,
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                title: const Text('Auto-detect waiting'),
+                subtitle: const Text(
+                    'Automatically mark me as waiting if I stay near a stop for '
+                    '${SmartNotificationService.waitConfirmMinutes}+ minutes'),
+                secondary: const Icon(Icons.access_time),
+                value: prefs.autoDetectWaiting,
+                onChanged: prefs.setAutoDetectWaiting,
+              ),
+            ],
             if (isDriver) ...[
               const Divider(height: 1),
               SwitchListTile(
@@ -179,7 +181,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
-                          _buildNotificationSettings(isDriver: false),
+                          _buildNotificationSettings(isDriver: false, showStudentOptions: true),
                           const SizedBox(height: 24),
                           _buildSectionTitle('Appearance'),
                           _buildThemeSetting(themeProvider),
@@ -216,16 +218,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const LiveTripPill(inAppBarArea: true),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _buildNotificationSettings(
-                        isDriver: authProvider.currentUser?.role == UserRole.driver,
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Appearance'),
-                      _buildThemeSetting(themeProvider),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Account'),
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              // Admin users don't need Smart Notifications settings
+                              // so hide the entire section for them.
+                              if (authProvider.currentUser?.role != UserRole.admin) ...[
+                                _buildNotificationSettings(
+                                  isDriver: authProvider.currentUser?.role == UserRole.driver,
+                                  showStudentOptions: authProvider.currentUser?.role == UserRole.student,
+                                ),
+                                const SizedBox(height: 24),
+                              ],
+                              _buildSectionTitle('Appearance'),
+                              _buildThemeSetting(themeProvider),
+                              const SizedBox(height: 24),
+                              _buildSectionTitle('Account'),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -322,7 +329,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    _buildNotificationSettings(isDriver: false),
+                    _buildNotificationSettings(isDriver: false, showStudentOptions: true),
                     const SizedBox(height: 24),
                     _buildSectionTitle('Appearance'),
                     _buildThemeSetting(themeProvider),
