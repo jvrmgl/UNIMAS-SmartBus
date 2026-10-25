@@ -7,7 +7,17 @@ service firebase.storage {
       allow write: if request.resource != null
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*')
-        && fileName.matches('(?i)^.*\\.(jpg|jpeg|png|webp)$');
+        && fileName.matches('^.*\\.(jpg|jpeg|png|webp)$');
+    }
+
+    match /schedule_images/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && fileName.matches('^.*\\.(jpg|jpeg|png|webp)$');
     }
 
     match /{allPaths=**} {
