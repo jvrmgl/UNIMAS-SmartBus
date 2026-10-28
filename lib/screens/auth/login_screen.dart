@@ -125,110 +125,12 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _handleForgotPassword() async {
     FocusScope.of(context).unfocus();
 
-    final authProvider = context.read<AuthProvider>();
-    final emailController =
-        TextEditingController(text: _emailController.text.trim());
-    String? inlineError;
-    var isSubmitting = false;
-
     final sentEmail = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Reset Password'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Enter your account email. We will send a password reset link.',
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: emailController,
-                enabled: !isSubmitting,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email Address',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-              ),
-              if (inlineError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  inlineError!,
-                  style: TextStyle(
-                    color: Theme.of(dialogContext).colorScheme.error,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed:
-                  isSubmitting ? null : () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final email = emailController.text.trim();
-
-                      if (email.isEmpty) {
-                        setDialogState(
-                          () =>
-                              inlineError = 'Please enter your email address.',
-                        );
-                        return;
-                      }
-
-                      if (!_emailPattern.hasMatch(email)) {
-                        setDialogState(
-                          () => inlineError =
-                              'Please enter a valid email address.',
-                        );
-                        return;
-                      }
-
-                      setDialogState(() {
-                        inlineError = null;
-                        isSubmitting = true;
-                      });
-
-                      final success = await authProvider.resetPassword(email);
-                      if (!dialogContext.mounted) {
-                        emailController.dispose();
-                        return;
-                      }
-
-                      setDialogState(() => isSubmitting = false);
-
-                      if (success) {
-                        Navigator.of(dialogContext).pop(email);
-                      } else {
-                        setDialogState(
-                          () => inlineError = authProvider.error ??
-                              'Unable to send reset email.',
-                        );
-                      }
-                    },
-              child: isSubmitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Send Link'),
-            ),
-          ],
-        ),
+      builder: (_) => _ResetPasswordDialog(
+        initialEmail: _emailController.text.trim(),
       ),
     );
-
-    emailController.dispose();
 
     if (!mounted || sentEmail == null) return;
 
@@ -456,6 +358,118 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ResetPasswordDialog extends StatefulWidget {
+  const _ResetPasswordDialog({required this.initialEmail});
+
+  final String initialEmail;
+
+  @override
+  State<_ResetPasswordDialog> createState() => _ResetPasswordDialogState();
+}
+
+class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
+  late final TextEditingController _emailController;
+  String? _inlineError;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.initialEmail);
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      setState(() => _inlineError = 'Please enter your email address.');
+      return;
+    }
+
+    if (!_LoginScreenState._emailPattern.hasMatch(email)) {
+      setState(() => _inlineError = 'Please enter a valid email address.');
+      return;
+    }
+
+    setState(() {
+      _inlineError = null;
+      _isSubmitting = true;
+    });
+
+    final authProvider = context.read<AuthProvider>();
+    final success = await authProvider.resetPassword(email);
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.of(context).pop(email);
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+      _inlineError = authProvider.error ?? 'Unable to send reset email.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reset Password'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Enter your account email. We will send a password reset link.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _emailController,
+            enabled: !_isSubmitting,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email Address',
+              prefixIcon: Icon(Icons.email_outlined),
+            ),
+          ),
+          if (_inlineError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _inlineError!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isSubmitting ? null : _submit,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Send Link'),
+        ),
+      ],
     );
   }
 }
