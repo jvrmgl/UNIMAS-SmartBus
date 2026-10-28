@@ -15,8 +15,7 @@ class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
-  static final RegExp _emailPattern =
-      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+  static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   bool _obscurePassword = true;
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -31,9 +30,10 @@ class _LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+        .animate(
+            CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
     _animCtrl.forward();
   }
 
@@ -131,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen>
     String? inlineError;
     var isSubmitting = false;
 
-    await showDialog<void>(
+    final sentEmail = await showDialog<String>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
@@ -167,9 +167,8 @@ class _LoginScreenState extends State<LoginScreen>
           ),
           actions: [
             TextButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () => Navigator.of(dialogContext).pop(),
+              onPressed:
+                  isSubmitting ? null : () => Navigator.of(dialogContext).pop(),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
@@ -180,14 +179,16 @@ class _LoginScreenState extends State<LoginScreen>
 
                       if (email.isEmpty) {
                         setDialogState(
-                          () => inlineError = 'Please enter your email address.',
+                          () =>
+                              inlineError = 'Please enter your email address.',
                         );
                         return;
                       }
 
                       if (!_emailPattern.hasMatch(email)) {
                         setDialogState(
-                          () => inlineError = 'Please enter a valid email address.',
+                          () => inlineError =
+                              'Please enter a valid email address.',
                         );
                         return;
                       }
@@ -198,32 +199,19 @@ class _LoginScreenState extends State<LoginScreen>
                       });
 
                       final success = await authProvider.resetPassword(email);
-                      if (!dialogContext.mounted) return;
+                      if (!dialogContext.mounted) {
+                        emailController.dispose();
+                        return;
+                      }
 
                       setDialogState(() => isSubmitting = false);
 
                       if (success) {
-                        Navigator.of(dialogContext).pop();
-                        if (!mounted) return;
-                        showDialog<void>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Check Your Email'),
-                            content: Text(
-                              'Password reset link sent to $email.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('OK'),
-                              ),
-                            ],
-                          ),
-                        );
+                        Navigator.of(dialogContext).pop(email);
                       } else {
                         setDialogState(
-                          () => inlineError =
-                              authProvider.error ?? 'Unable to send reset email.',
+                          () => inlineError = authProvider.error ??
+                              'Unable to send reset email.',
                         );
                       }
                     },
@@ -241,6 +229,22 @@ class _LoginScreenState extends State<LoginScreen>
     );
 
     emailController.dispose();
+
+    if (!mounted || sentEmail == null) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Check Your Email'),
+        content: Text('Password reset link sent to $sentEmail.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showErrorDialog(String message) {
@@ -373,7 +377,8 @@ class _LoginScreenState extends State<LoginScreen>
                                     : Icons.visibility_outlined,
                               ),
                               onPressed: () {
-                                setState(() => _obscurePassword = !_obscurePassword);
+                                setState(
+                                    () => _obscurePassword = !_obscurePassword);
                               },
                             ),
                             hintText: 'Enter your password',
@@ -389,7 +394,9 @@ class _LoginScreenState extends State<LoginScreen>
                               width: double.infinity,
                               height: 52,
                               child: ElevatedButton(
-                                onPressed: authProvider.isLoading ? null : _handleLogin,
+                                onPressed: authProvider.isLoading
+                                    ? null
+                                    : _handleLogin,
                                 style: ElevatedButton.styleFrom(
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
@@ -401,8 +408,9 @@ class _LoginScreenState extends State<LoginScreen>
                                         width: 22,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2.5,
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                              Colors.white),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  Colors.white),
                                         ),
                                       )
                                     : const Text(
