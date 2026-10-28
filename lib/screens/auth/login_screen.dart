@@ -125,26 +125,10 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _handleForgotPassword() async {
     FocusScope.of(context).unfocus();
 
-    final sentEmail = await showDialog<String>(
+    await showDialog<String>(
       context: context,
       builder: (_) => _ResetPasswordDialog(
         initialEmail: _emailController.text.trim(),
-      ),
-    );
-
-    if (!mounted || sentEmail == null) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Check Your Email'),
-        content: Text('Password reset link sent to $sentEmail.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('OK'),
-          ),
-        ],
       ),
     );
   }
@@ -375,6 +359,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
   late final TextEditingController _emailController;
   String? _inlineError;
   bool _isSubmitting = false;
+  bool _isSent = false;
 
   @override
   void initState() {
@@ -411,7 +396,12 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
     if (!mounted) return;
 
     if (success) {
-      Navigator.of(context).pop(email);
+      setState(() {
+        _isSubmitting = false;
+        _isSent = true;
+      });
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (mounted) Navigator.of(context).pop(email);
       return;
     }
 
@@ -425,51 +415,63 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Reset Password'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Enter your account email. We will send a password reset link.',
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _emailController,
-            enabled: !_isSubmitting,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Email Address',
-              prefixIcon: Icon(Icons.email_outlined),
-            ),
-          ),
-          if (_inlineError != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              _inlineError!,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
-                fontSize: 12,
+      content: _isSent
+          ? const SizedBox(
+              height: 72,
+              child: Center(
+                child: Text(
+                  'Link Sent',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Enter your account email. We will send a password reset link.',
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _emailController,
+                  enabled: !_isSubmitting,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email Address',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                ),
+                if (_inlineError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _inlineError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _isSubmitting ? null : _submit,
-          child: _isSubmitting
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Send Link'),
-        ),
-      ],
+      actions: _isSent
+          ? null
+          : [
+              TextButton(
+                onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: _isSubmitting ? null : _submit,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Send Link'),
+              ),
+            ],
     );
   }
 }
