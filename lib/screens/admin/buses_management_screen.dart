@@ -97,8 +97,7 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.directions_bus_filled,
-                      size: 64,
-                      color: Colors.grey[400]),
+                      size: 64, color: Colors.grey[400]),
                   const SizedBox(height: 16),
                   Text(
                     'No buses available',
@@ -142,11 +141,11 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: isHighlighted
-                    ? Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.08)
-                    : Theme.of(context).colorScheme.surface,
+                      ? Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.08)
+                      : Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
                   border: isHighlighted
                       ? Border.all(
@@ -183,7 +182,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                             decoration: BoxDecoration(
                               color: statusColor.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: statusColor, width: 0.8),
+                              border:
+                                  Border.all(color: statusColor, width: 0.8),
                             ),
                             child: Text(
                               isActive ? 'Active' : 'Inactive',
@@ -255,7 +255,9 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                             child: Row(
                               children: [
                                 Icon(
-                                  bus.isActive ? Icons.block : Icons.check_circle,
+                                  bus.isActive
+                                      ? Icons.block
+                                      : Icons.check_circle,
                                   size: 18,
                                 ),
                                 const SizedBox(width: 8),
@@ -269,7 +271,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                               children: [
                                 Icon(Icons.delete, size: 18, color: Colors.red),
                                 SizedBox(width: 8),
-                                Text('Delete', style: TextStyle(color: Colors.red)),
+                                Text('Delete',
+                                    style: TextStyle(color: Colors.red)),
                               ],
                             ),
                           ),
@@ -293,7 +296,9 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                             child: ElevatedButton.icon(
                               onPressed: () => _showAssignDriverDialog(bus),
                               icon: Icon(
-                                bus.driverId == null ? Icons.person_add : Icons.edit,
+                                bus.driverId == null
+                                    ? Icons.person_add
+                                    : Icons.edit,
                                 size: 18,
                               ),
                               label: Text(
@@ -323,7 +328,9 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                             child: ElevatedButton.icon(
                               onPressed: () => _showAssignRouteDialog(bus),
                               icon: Icon(
-                                bus.assignedRoute == null ? Icons.route : Icons.edit,
+                                bus.assignedRoute == null
+                                    ? Icons.route
+                                    : Icons.edit,
                                 size: 18,
                               ),
                               label: Text(
@@ -359,7 +366,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => BusLocationMapScreen(bus: bus),
+                                  builder: (_) =>
+                                      BusLocationMapScreen(bus: bus),
                                 ),
                               );
                             },
@@ -447,7 +455,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
               onPressed: () async {
                 String? error;
                 if (selectedDriverId == null) {
-                  error = await _firestoreService.removeDriverFromBus(bus.busId);
+                  error =
+                      await _firestoreService.removeDriverFromBus(bus.busId);
                 } else {
                   final selectedDriver = drivers.firstWhere(
                     (driver) => driver.uid == selectedDriverId,
@@ -486,68 +495,84 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
     if (!mounted) return;
 
     String? selectedRouteId = bus.assignedRoute;
+    var isSaving = false;
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
           title: const Text('Assign Route'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Assign a route to Bus ${bus.busNumber}'),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                initialValue: selectedRouteId,
-                decoration: const InputDecoration(
-                  labelText: 'Route',
-                  prefixIcon: Icon(Icons.route),
-                ),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('No route'),
-                  ),
-                  ...routes.map(
-                    (route) => DropdownMenuItem<String?>(
-                      value: route.routeId,
-                      child: Text('${route.routeCode} - ${route.routeName}'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Assign a route to Bus ${bus.busNumber}'),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: selectedRouteId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Route',
+                      prefixIcon: Icon(Icons.route),
                     ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('No route'),
+                      ),
+                      ...routes.map(
+                        (route) => DropdownMenuItem<String?>(
+                          value: route.routeId,
+                          child: Text(
+                            '${route.routeCode} - ${route.routeName}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: isSaving
+                        ? null
+                        : (value) {
+                            setDialogState(() => selectedRouteId = value);
+                          },
                   ),
                 ],
-                onChanged: (value) {
-                  setDialogState(() => selectedRouteId = value);
-                },
               ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () async {
-                final error = selectedRouteId == null
-                    ? await _firestoreService.removeRouteFromBus(bus.busId)
-                    : await _firestoreService.assignRouteToBus(
-                        busId: bus.busId,
-                        routeId: selectedRouteId!,
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      setDialogState(() => isSaving = true);
+                      final error = selectedRouteId == null
+                          ? await _firestoreService
+                              .removeRouteFromBus(bus.busId)
+                          : await _firestoreService.assignRouteToBus(
+                              busId: bus.busId,
+                              routeId: selectedRouteId!,
+                            );
+
+                      if (!dialogContext.mounted) return;
+                      Navigator.pop(dialogContext);
+                      if (!mounted) return;
+
+                      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                        SnackBar(
+                          content: Text(error == null
+                              ? 'Route assignment updated'
+                              : 'Error: $error'),
+                          backgroundColor:
+                              error == null ? Colors.green : Colors.red,
+                        ),
                       );
-
-                if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-                if (!mounted) return;
-
-                ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-                  SnackBar(
-                    content: Text(error == null
-                        ? 'Route assignment updated'
-                        : 'Error: $error'),
-                    backgroundColor: error == null ? Colors.green : Colors.red,
-                  ),
-                );
-                if (error == null) context.read<RouteProvider>().fetchRoutes();
-              },
+                    },
               child: const Text('Save'),
             ),
           ],
@@ -661,7 +686,8 @@ class _BusesManagementScreenState extends State<BusesManagementScreen> {
     final busNumberController = TextEditingController(text: bus.busNumber);
     final regNumberController =
         TextEditingController(text: bus.registrationNumber);
-    final capacityController = TextEditingController(text: bus.capacity.toString());
+    final capacityController =
+        TextEditingController(text: bus.capacity.toString());
 
     showDialog(
       context: context,
