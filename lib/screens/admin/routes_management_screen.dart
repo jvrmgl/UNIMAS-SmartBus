@@ -296,9 +296,9 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
                                   IconButton(
                                     icon: const Icon(Icons.delete,
                                         size: 20, color: Colors.red),
-                                    tooltip: 'Delete stop',
+                                    tooltip: 'Remove stop from route',
                                     onPressed: () =>
-                                        _confirmDeleteBusStop(stop),
+                                        _confirmRemoveStopFromRoute(route, stop),
                                   ),
                                 ],
                               ),
@@ -1057,6 +1057,56 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
     );
   }
 
+  void _confirmRemoveStopFromRoute(BusRoute route, BusStop stop) {
+    final scaffoldContext = context;
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove Stop from Route'),
+        content: Text(
+          'Remove ${stop.stopName} from ${route.routeName}? The bus stop will remain available in Manage Bus Stops.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final updatedStopIds = route.stopIds
+                  .where((stopId) => stopId != stop.stopId)
+                  .toList();
+              final error = await _firestoreService.updateRouteStops(
+                routeId: route.routeId,
+                stopIds: updatedStopIds,
+              );
+              if (!dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    error == null
+                        ? 'Stop removed from route'
+                        : 'Error: $error',
+                  ),
+                  backgroundColor: error == null ? Colors.green : Colors.red,
+                ),
+              );
+
+              if (error == null) {
+                context.read<RouteProvider>().fetchRoutes();
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAddBusStopMapDialog(BuildContext scaffoldContext) {
     final formKey = GlobalKey<FormState>();
     final stopNameController = TextEditingController();
@@ -1295,7 +1345,6 @@ class _RoutesManagementScreenState extends State<RoutesManagementScreen> {
     );
   }
 }
-
 
 
 
